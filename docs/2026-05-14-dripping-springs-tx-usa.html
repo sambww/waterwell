@@ -3,90 +3,226 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Water Well Depth Report — Dripping Springs, TX, USA</title>
+  <title>Water Well Depth Estimate &mdash; Dripping Springs, TX, USA | Ballard Water Well Company</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
-    :root {
-      --fg:#1c1c1e; --muted:#666; --bg:#f7f7f8; --card:#fff;
-      --accent:#0b6bcb; --accent-soft:#e8f1fb; --border:#e4e4e7;
+    
+:root {
+  --navy:#1c3f6e; --navy-2:#2b568a;
+  --blue:#1e88e5;
+  --green:#4a8a3a; --green-dark:#3a6f2d; --green-soft:#ecf5e6;
+  --fg:#1c1c1e; --muted:#6b7280;
+  --bg:#f4f6f9; --card:#fff;
+  --border:#e4e7eb; --accent-soft:#e8f1fb;
+}
+* { box-sizing:border-box; }
+html, body { margin:0; }
+body {
+  font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  color:var(--fg); background:var(--bg);
+}
+a { color:var(--blue); text-decoration:none; }
+a:hover { text-decoration:underline; }
+
+.brandbar { background:#fff; border-bottom:1px solid var(--border); padding:14px 0; }
+.brandbar .inner {
+  max-width:1100px; margin:0 auto; padding:0 24px;
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+}
+.brandbar img { height:58px; width:auto; display:block; }
+.brandbar .company { display:flex; flex-direction:column; }
+.brandbar .name { font-weight:700; font-size:17px; color:var(--navy); }
+.brandbar .tag { color:var(--muted); font-size:13px; }
+.brandbar .phone {
+  margin-left:auto; color:var(--navy); font-weight:700; font-size:17px;
+  text-decoration:none; white-space:nowrap;
+}
+.brandbar .phone:hover { color:var(--blue); text-decoration:none; }
+
+footer.brand { background:#fff; border-top:1px solid var(--border); margin-top:40px; }
+footer.brand .inner {
+  max-width:1100px; margin:0 auto; padding:28px 24px;
+  display:grid; grid-template-columns:2fr 1fr 1fr; gap:28px;
+}
+@media (max-width:780px) { footer.brand .inner { grid-template-columns:1fr; } }
+footer.brand h3 {
+  font-size:12px; text-transform:uppercase; letter-spacing:.06em;
+  color:var(--muted); margin:0 0 10px; font-weight:600;
+}
+footer.brand p { margin:0 0 4px; font-size:14px; color:#444; }
+
+    .hero {
+      background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+      color:#fff; padding:36px 0 84px;
     }
-    * { box-sizing:border-box; }
-    body {
-      margin:0; font:15px/1.5 -apple-system,BlinkMacSystemFont,Inter,Helvetica,Arial,sans-serif;
-      color:var(--fg); background:var(--bg);
-    }
-    .wrap { max-width:1100px; margin:0 auto; padding:24px; }
-    header h1 { margin:0 0 4px; font-size:22px; }
-    header .sub { color:var(--muted); margin-bottom:20px; }
+    .hero .inner { max-width:1100px; margin:0 auto; padding:0 24px; }
+    .hero .eyebrow { font-size:12px; text-transform:uppercase; letter-spacing:.08em; opacity:.7; margin-bottom:6px; }
+    .hero h1 { margin:0 0 8px; font-size:26px; font-weight:600; line-height:1.25; }
+    .hero .address { font-size:19px; opacity:.95; }
+    .hero .meta { font-size:13px; opacity:.7; margin-top:6px; }
+
+    .wrap { max-width:1100px; margin:-60px auto 0; padding:0 24px 8px; position:relative; }
+
     .summary {
-      background:var(--card); border:1px solid var(--border); border-radius:10px;
-      padding:18px 20px; margin-bottom:20px; display:flex; flex-wrap:wrap; gap:24px;
+      background:var(--card); border:1px solid var(--border); border-radius:14px;
+      padding:18px; margin-bottom:24px; box-shadow:0 8px 24px rgba(28,63,110,.10);
+      display:flex; flex-wrap:wrap; gap:14px;
     }
-    .stat .label { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
-    .stat .value { font-size:22px; font-weight:600; }
-    .stat .value small { font-size:13px; font-weight:400; color:var(--muted); margin-left:4px; }
-    .rationale { flex:1 1 280px; color:var(--muted); font-size:14px; align-self:center; }
-    #map { height:480px; border:1px solid var(--border); border-radius:10px; margin-bottom:20px; }
-    table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
-    th, td { padding:10px 12px; text-align:left; font-size:14px; border-bottom:1px solid var(--border); }
-    th { background:#fafafa; color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+    .stat { flex:1 1 220px; padding:14px 18px; border-radius:10px; background:#fafbfc; border:1px solid var(--border); }
+    .stat.primary { background:var(--green-soft); border-color:#cfe3c4; }
+    .stat.secondary { background:var(--accent-soft); border-color:#c8defa; }
+    .stat .label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.07em; font-weight:600; }
+    .stat .value { font-size:30px; font-weight:700; color:var(--fg); margin-top:4px; line-height:1.1; }
+    .stat.primary .value { color:var(--green-dark); }
+    .stat.secondary .value { color:var(--navy); }
+    .stat .value small { font-size:13px; font-weight:400; color:var(--muted); margin-left:6px; }
+
+    .rationale {
+      background:var(--card); border:1px solid var(--border); border-radius:12px;
+      padding:18px 22px; margin-bottom:24px; color:#3a3a3a; line-height:1.6;
+    }
+    .rationale b { color:var(--navy); }
+
+    #map {
+      height:520px; border:1px solid var(--border); border-radius:12px;
+      margin-bottom:24px; box-shadow:0 2px 8px rgba(0,0,0,.04);
+    }
+
+    .table-wrap {
+      background:var(--card); border:1px solid var(--border); border-radius:12px;
+      overflow:hidden; margin-bottom:24px;
+    }
+    table { width:100%; border-collapse:collapse; }
+    th, td { padding:12px 14px; text-align:left; font-size:14px; border-bottom:1px solid var(--border); }
+    th { background:#f9fafb; color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
     tr:last-child td { border-bottom:0; }
-    tr.recommended td { background:var(--accent-soft); }
-    a { color:var(--accent); text-decoration:none; }
-    a:hover { text-decoration:underline; }
-    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:var(--accent); color:#fff; font-size:11px; margin-left:6px; }
-    footer { margin-top:24px; font-size:12px; color:var(--muted); }
+    tr.recommended td { background:var(--green-soft); }
+    tr.recommended td:first-child { box-shadow:inset 3px 0 0 var(--green); }
+    .pill {
+      display:inline-block; padding:2px 8px; border-radius:999px;
+      background:var(--green); color:#fff; font-size:10px; margin-left:6px;
+      font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+    }
+
+    .cta {
+      background: linear-gradient(135deg, var(--green) 0%, var(--green-dark) 100%);
+      color:#fff; padding:32px 28px; border-radius:14px;
+      text-align:center; margin-bottom:8px;
+    }
+    .cta h2 { margin:0 0 8px; font-size:22px; font-weight:600; }
+    .cta p { margin:0 0 18px; opacity:.95; max-width:560px; margin-left:auto; margin-right:auto; }
+    .cta-buttons { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; }
+    .cta-btn {
+      background:#fff; color:var(--green-dark); padding:12px 22px;
+      border-radius:8px; font-weight:600; text-decoration:none;
+      display:inline-block; transition:transform .15s, box-shadow .15s;
+    }
+    .cta-btn:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,.15); text-decoration:none; }
+    .cta-btn.alt { background:rgba(255,255,255,.12); color:#fff; border:1px solid rgba(255,255,255,.35); }
+
+    .disclaimer {
+      max-width:1100px; margin:0 auto; padding:24px 24px 8px;
+      color:var(--muted); font-size:12px; line-height:1.6;
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <h1>Water Well Depth Report</h1>
-      <div class="sub">Dripping Springs, TX, USA &middot; generated 2026-05-14 16:27</div>
-    </header>
+  <div class="brandbar">
+    <div class="inner">
+      <a href="https://www.texaswaterwell.com/" target="_blank" rel="noopener"><img src="logo.jpg" alt="Ballard Water Well Company"></a>
+      <div class="company">
+        <span class="name">Ballard Water Well Company</span>
+        <span class="tag">Your local water well experts &middot; Since 1979</span>
+      </div>
+      <a href="tel:8324793557" class="phone">(832) 479-3557</a>
+    </div>
+  </div>
 
+  <section class="hero">
+    <div class="inner">
+      <div class="eyebrow">Water well depth estimate</div>
+      <h1>Based on the 10 nearest TWDB well logs</h1>
+      <div class="address">Dripping Springs, TX, USA</div>
+      <div class="meta">Prepared May 14, 2026 &middot; 10 wells analyzed within 0.9 miles</div>
+    </div>
+  </section>
+
+  <div class="wrap">
     <section class="summary">
-      <div class="stat">
-        <div class="label">Recommended depth</div>
+      <div class="stat primary">
+        <div class="label">Recommended Depth</div>
         <div class="value">740 ft<small></small></div>
       </div>
-      <div class="stat"><div class="label">Alternative depth</div><div class="value">570 ft<small>next-deepest distinct</small></div></div>
+      <div class="stat secondary"><div class="label">Alternative Depth</div><div class="value">570 ft<small>next-deepest distinct</small></div></div>
       <div class="stat">
-        <div class="label">Wells analyzed</div>
-        <div class="value">10<small>within 0.9 mi</small></div>
+        <div class="label">Depth Range Observed</div>
+        <div class="value">300&ndash;740 ft<small>across 10 wells</small></div>
       </div>
-      <div class="rationale">Deepest of the 10 closest wells reaches <b>740 ft</b>. If you want a shallower option, the next distinct depth is 570 ft.</div>
     </section>
+
+    <div class="rationale">The deepest of the 10 nearest wells reaches <b>740 ft</b>. If you want a shallower option, the next distinct depth is 570 ft.</div>
 
     <div id="map"></div>
 
-    <table>
-      <thead>
-        <tr>
-          <th>#</th><th>Depth (ft)</th><th>Distance (mi)</th>
-          <th>Owner / Address</th><th>County</th><th>Drilled</th><th>Well Log</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr><td>1</td><td>485 ft</td><td>0.21</td><td>Bent Sky Investments, LLC. &middot; 264 College St.</td><td>Hays</td><td>2022-03-31</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=603502&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
-        <tr class='recommended'><td>2</td><td>740 ft<span class="pill">recommended</span></td><td>0.55</td><td>Cunningham Ranch c/o Barry Cunningham &middot; W. Fitzhugh Road</td><td>Hays</td><td>2009-08-25</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=194272&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
-        <tr><td>3</td><td>300 ft</td><td>0.60</td><td>Needham, Joey &amp; Della &middot; 201 Needham Lane</td><td>Hays</td><td>2009-05-28</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=184289&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
-        <tr><td>4</td><td>480 ft</td><td>0.75</td><td>Caldwell, Mara &middot; 27150 RR12</td><td>Hays</td><td>2007-04-13</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=109913&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
-        <tr><td>5</td><td>510 ft</td><td>0.76</td><td>VIKTOR KOPPONEN &middot; 27104 RANCH RD. 12</td><td>Hays</td><td>2014-06-05</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=371169&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
-        <tr><td>6</td><td>470 ft</td><td>0.77</td><td>JAMES SPENCER &middot; 711 C HWY. 290</td><td>Hays</td><td>2014-05-06</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=369694&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
-        <tr><td>7</td><td>570 ft</td><td>0.90</td><td>POE SHELTON &middot; 700 HWY. 290 EAST</td><td>Hays</td><td>2007-04-02</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=116119&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
-        <tr><td>8</td><td>530 ft</td><td>0.93</td><td>PAUL ALBINI-DSYSA BASEBALL FIELD &middot; 100 BAIRD LANE</td><td>Hays</td><td>2011-09-26</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=270918&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
-        <tr><td>9</td><td>360 ft</td><td>0.94</td><td>Bill McMorris &middot; 1225 Creek Rd</td><td>Hays</td><td>2024-06-12</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=669884&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
-        <tr><td>10</td><td>540 ft</td><td>0.94</td><td>D.S.Y.S.A. &middot; Hope Hanks Blvd.</td><td>Hays</td><td>2005-03-28</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=162502&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
-      </tbody>
-    </table>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>Depth (ft)</th><th>Distance (mi)</th>
+            <th>Owner / Address</th><th>County</th><th>Drilled</th><th>Well Log</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td>485 ft</td><td>0.21</td><td>Bent Sky Investments, LLC. &middot; 264 College St.</td><td>Hays</td><td>2022-03-31</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=603502&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+          <tr class='recommended'><td>2</td><td>740 ft<span class="pill">recommended</span></td><td>0.55</td><td>Cunningham Ranch c/o Barry Cunningham &middot; W. Fitzhugh Road</td><td>Hays</td><td>2009-08-25</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=194272&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+          <tr><td>3</td><td>300 ft</td><td>0.60</td><td>Needham, Joey &amp; Della &middot; 201 Needham Lane</td><td>Hays</td><td>2009-05-28</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=184289&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+          <tr><td>4</td><td>480 ft</td><td>0.75</td><td>Caldwell, Mara &middot; 27150 RR12</td><td>Hays</td><td>2007-04-13</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=109913&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+          <tr><td>5</td><td>510 ft</td><td>0.76</td><td>VIKTOR KOPPONEN &middot; 27104 RANCH RD. 12</td><td>Hays</td><td>2014-06-05</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=371169&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+          <tr><td>6</td><td>470 ft</td><td>0.77</td><td>JAMES SPENCER &middot; 711 C HWY. 290</td><td>Hays</td><td>2014-05-06</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=369694&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+          <tr><td>7</td><td>570 ft</td><td>0.90</td><td>POE SHELTON &middot; 700 HWY. 290 EAST</td><td>Hays</td><td>2007-04-02</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=116119&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+          <tr><td>8</td><td>530 ft</td><td>0.93</td><td>PAUL ALBINI-DSYSA BASEBALL FIELD &middot; 100 BAIRD LANE</td><td>Hays</td><td>2011-09-26</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=270918&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+          <tr><td>9</td><td>360 ft</td><td>0.94</td><td>Bill McMorris &middot; 1225 Creek Rd</td><td>Hays</td><td>2024-06-12</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=669884&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+          <tr><td>10</td><td>540 ft</td><td>0.94</td><td>D.S.Y.S.A. &middot; Hope Hanks Blvd.</td><td>Hays</td><td>2005-03-28</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=162502&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+        </tbody>
+      </table>
+    </div>
 
-    <footer>
-      Source: Texas Water Development Board Submitted Driller's Reports
-      (<a href="https://www.twdb.texas.gov/groundwater/data/drillersdb.asp" target="_blank" rel="noopener">TWDB SDR</a>).
-      Recommended depth is the deepest of the 10 nearest wells; consult a licensed driller before committing.
-    </footer>
+    <section class="cta">
+      <h2>Ready for your full estimate?</h2>
+      <p>The depth above is a starting point from public records. Let our team walk your property and put together a complete proposal.</p>
+      <div class="cta-buttons">
+        <a href="tel:8324793557" class="cta-btn">Call (832) 479-3557</a>
+        <a href="mailto:info@texaswaterwell.com?subject=Estimate%20request%20for%20Dripping%20Springs%2C%20TX%2C%20USA" class="cta-btn alt">Email info@texaswaterwell.com</a>
+        <a href="https://www.texaswaterwell.com/" class="cta-btn alt" target="_blank" rel="noopener">Visit our website</a>
+      </div>
+    </section>
   </div>
+
+  <div class="disclaimer">
+    Source: Texas Water Development Board Submitted Driller's Reports
+    (<a href="https://www.twdb.texas.gov/groundwater/data/drillersdb.asp" target="_blank" rel="noopener">TWDB SDR</a>).
+    Recommended depth is the deepest of the 10 nearest water-supply wells in the public database and is provided as an estimate based on historical drilling records in the area. Actual depth required for your site depends on soil conditions, water table, and aquifer characteristics observed during drilling. A final estimate will be provided after site assessment by a licensed driller.
+  </div>
+
+  <footer class="brand">
+    <div class="inner">
+      <div>
+        <h3>Ballard Water Well Company LLC</h3>
+        <p>Premier water well drilling, pump installation, and water treatment in Willis, TX and the Greater Houston area.</p>
+        <p style="margin-top:10px;">Licensed TDLR Master Driller &amp; Pump Installer</p>
+      </div>
+      <div>
+        <h3>Contact</h3>
+        <p><a href="tel:8324793557">(832) 479-3557</a></p>
+        <p><a href="mailto:info@texaswaterwell.com">info@texaswaterwell.com</a></p>
+        <p><a href="https://www.texaswaterwell.com/" target="_blank" rel="noopener">texaswaterwell.com</a></p>
+      </div>
+      <div>
+        <h3>Service Area</h3>
+        <p>100-mile service radius from Willis, Texas &mdash; including Houston, Conroe, The Woodlands, Magnolia, Tomball, Spring, Cypress, Katy, and surrounding areas.</p>
+      </div>
+    </div>
+  </footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
@@ -99,8 +235,8 @@
 
     const subjectIcon = L.divIcon({
       className: 'subject-icon',
-      html: '<div style="background:#d00;border:2px solid #fff;border-radius:50%;width:16px;height:16px;box-shadow:0 0 0 2px #d00;"></div>',
-      iconSize: [16,16], iconAnchor: [8,8]
+      html: '<div style="background:#1c3f6e;border:3px solid #fff;border-radius:50%;width:18px;height:18px;box-shadow:0 0 0 3px rgba(28,63,110,.35);"></div>',
+      iconSize:[18,18], iconAnchor:[9,9]
     });
     L.marker([data.center.lat, data.center.lon], {icon: subjectIcon})
       .addTo(map)
@@ -108,17 +244,16 @@
 
     const bounds = [[data.center.lat, data.center.lon]];
     data.wells.forEach((w, i) => {
-      const isRec = w.is_recommended;
-      const color = isRec ? '#0b6bcb' : '#444';
+      const color = w.is_recommended ? '#4a8a3a' : '#1e88e5';
       const icon = L.divIcon({
         className: 'well-icon',
-        html: `<div style="background:${color};color:#fff;border:2px solid #fff;border-radius:50%;width:24px;height:24px;line-height:20px;text-align:center;font-size:12px;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.3);">${i+1}</div>`,
-        iconSize: [24,24], iconAnchor: [12,12]
+        html: `<div style="background:${color};color:#fff;border:2px solid #fff;border-radius:50%;width:26px;height:26px;line-height:22px;text-align:center;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,.3);">${i+1}</div>`,
+        iconSize:[26,26], iconAnchor:[13,13]
       });
       L.marker([w.lat, w.lon], {icon})
         .addTo(map)
         .bindPopup(
-          `<b>Well #${i+1}${isRec ? ' &middot; recommended' : ''}</b><br>` +
+          `<b>Well #${i+1}${w.is_recommended ? ' &middot; recommended' : ''}</b><br>` +
           `Depth: <b>${w.depth_ft} ft</b><br>` +
           `Distance: ${w.distance_mi} mi<br>` +
           (w.owner ? `${w.owner}<br>` : '') +
