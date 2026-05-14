@@ -28,8 +28,8 @@ WELLS_CSV = ROOT / "data" / "wells.csv"
 REPORTS_DIR = ROOT / "docs"
 
 TWDB_REPORT_URL = (
-    "https://www3.twdb.texas.gov/apps/WaterDataInteractive/"
-    "GetReports.aspx?Num={tn}&Type=ReportWellMain&Source=W"
+    "https://www3.twdb.texas.gov/apps/waterdatainteractive/"
+    "GetReports.aspx?Num={tn}&Type=SDR-Well"
 )
 
 # Restrict the nearest-neighbor search to wells that actually supply water,
