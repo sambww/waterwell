@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Water Well Depth Report — Dripping Springs, TX</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      --fg:#1c1c1e; --muted:#666; --bg:#f7f7f8; --card:#fff;
+      --accent:#0b6bcb; --accent-soft:#e8f1fb; --border:#e4e4e7;
+    }
+    * { box-sizing:border-box; }
+    body {
+      margin:0; font:15px/1.5 -apple-system,BlinkMacSystemFont,Inter,Helvetica,Arial,sans-serif;
+      color:var(--fg); background:var(--bg);
+    }
+    .wrap { max-width:1100px; margin:0 auto; padding:24px; }
+    header h1 { margin:0 0 4px; font-size:22px; }
+    header .sub { color:var(--muted); margin-bottom:20px; }
+    .summary {
+      background:var(--card); border:1px solid var(--border); border-radius:10px;
+      padding:18px 20px; margin-bottom:20px; display:flex; flex-wrap:wrap; gap:24px;
+    }
+    .stat .label { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+    .stat .value { font-size:22px; font-weight:600; }
+    .stat .value small { font-size:13px; font-weight:400; color:var(--muted); margin-left:4px; }
+    .rationale { flex:1 1 280px; color:var(--muted); font-size:14px; align-self:center; }
+    #map { height:480px; border:1px solid var(--border); border-radius:10px; margin-bottom:20px; }
+    table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+    th, td { padding:10px 12px; text-align:left; font-size:14px; border-bottom:1px solid var(--border); }
+    th { background:#fafafa; color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+    tr:last-child td { border-bottom:0; }
+    tr.recommended td { background:var(--accent-soft); }
+    a { color:var(--accent); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; background:var(--accent); color:#fff; font-size:11px; margin-left:6px; }
+    footer { margin-top:24px; font-size:12px; color:var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Water Well Depth Report</h1>
+      <div class="sub">Dripping Springs, TX &middot; generated 2026-05-14 16:00</div>
+    </header>
+
+    <section class="summary">
+      <div class="stat">
+        <div class="label">Recommended depth</div>
+        <div class="value">740 ft<small></small></div>
+      </div>
+      <div class="stat"><div class="label">Alternative depth</div><div class="value">570 ft<small>next-deepest distinct</small></div></div>
+      <div class="stat">
+        <div class="label">Wells analyzed</div>
+        <div class="value">10<small>within 0.9 mi</small></div>
+      </div>
+      <div class="rationale">Deepest of the 10 closest wells reaches <b>740 ft</b>. If you want a shallower option, the next distinct depth is 570 ft.</div>
+    </section>
+
+    <div id="map"></div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>Depth (ft)</th><th>Distance (mi)</th>
+          <th>Owner / Address</th><th>County</th><th>Drilled</th><th>Well Log</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td>485 ft</td><td>0.15</td><td>Bent Sky Investments, LLC. &middot; 264 College St.</td><td>Hays</td><td>2022-03-31</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=603502&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+        <tr><td>2</td><td>300 ft</td><td>0.53</td><td>Needham, Joey &amp; Della &middot; 201 Needham Lane</td><td>Hays</td><td>2009-05-28</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=184289&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+        <tr class='recommended'><td>3</td><td>740 ft<span class="pill">recommended</span></td><td>0.54</td><td>Cunningham Ranch c/o Barry Cunningham &middot; W. Fitzhugh Road</td><td>Hays</td><td>2009-08-25</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=194272&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+        <tr><td>4</td><td>470 ft</td><td>0.73</td><td>JAMES SPENCER &middot; 711 C HWY. 290</td><td>Hays</td><td>2014-05-06</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=369694&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+        <tr><td>5</td><td>480 ft</td><td>0.76</td><td>Caldwell, Mara &middot; 27150 RR12</td><td>Hays</td><td>2007-04-13</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=109913&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+        <tr><td>6</td><td>510 ft</td><td>0.77</td><td>VIKTOR KOPPONEN &middot; 27104 RANCH RD. 12</td><td>Hays</td><td>2014-06-05</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=371169&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+        <tr><td>7</td><td>360 ft</td><td>0.89</td><td>Bill McMorris &middot; 1225 Creek Rd</td><td>Hays</td><td>2024-06-12</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=669884&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+        <tr><td>8</td><td>530 ft</td><td>0.94</td><td>PAUL ALBINI-DSYSA BASEBALL FIELD &middot; 100 BAIRD LANE</td><td>Hays</td><td>2011-09-26</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=270918&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+        <tr><td>9</td><td>540 ft</td><td>0.95</td><td>D.S.Y.S.A. &middot; Hope Hanks Blvd.</td><td>Hays</td><td>2005-03-28</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=162502&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+        <tr><td>10</td><td>570 ft</td><td>0.95</td><td>POE SHELTON &middot; 700 HWY. 290 EAST</td><td>Hays</td><td>2007-04-02</td><td><a href='https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=116119&amp;Type=ReportWellMain&amp;Source=W' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>
+      </tbody>
+    </table>
+
+    <footer>
+      Source: Texas Water Development Board Submitted Driller's Reports
+      (<a href="https://www.twdb.texas.gov/groundwater/data/drillersdb.asp" target="_blank" rel="noopener">TWDB SDR</a>).
+      Recommended depth is the deepest of the 10 nearest wells; consult a licensed driller before committing.
+    </footer>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const data = {"center": {"lat": 30.1894, "lon": -98.0875, "address": "Dripping Springs, TX"}, "wells": [{"tn": "603502", "lat": 30.189444, "lon": -98.09, "depth_ft": "485", "distance_mi": "0.15", "owner": "Bent Sky Investments, LLC.", "address": "264 College St.", "report_url": "https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=603502&Type=ReportWellMain&Source=W", "is_recommended": false}, {"tn": "184289", "lat": 30.182222, "lon": -98.090834, "depth_ft": "300", "distance_mi": "0.53", "owner": "Needham, Joey & Della", "address": "201 Needham Lane", "report_url": "https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=184289&Type=ReportWellMain&Source=W", "is_recommended": false}, {"tn": "194272", "lat": 30.194167, "lon": -98.094722, "depth_ft": "740", "distance_mi": "0.54", "owner": "Cunningham Ranch c/o Barry Cunningham", "address": "W. Fitzhugh Road", "report_url": "https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=194272&Type=ReportWellMain&Source=W", "is_recommended": true}, {"tn": "369694", "lat": 30.191667, "lon": -98.099445, "depth_ft": "470", "distance_mi": "0.73", "owner": "JAMES SPENCER", "address": "711 C HWY. 290", "report_url": "https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=369694&Type=ReportWellMain&Source=W", "is_recommended": false}, {"tn": "109913", "lat": 30.184445, "lon": -98.076111, "depth_ft": "480", "distance_mi": "0.76", "owner": "Caldwell, Mara", "address": "27150 RR12", "report_url": "https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=109913&Type=ReportWellMain&Source=W", "is_recommended": false}, {"tn": "371169", "lat": 30.183334, "lon": -98.076667, "depth_ft": "510", "distance_mi": "0.77", "owner": "VIKTOR KOPPONEN", "address": "27104 RANCH RD. 12", "report_url": "https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=371169&Type=ReportWellMain&Source=W", "is_recommended": false}, {"tn": "669884", "lat": 30.187607, "lon": -98.102187, "depth_ft": "360", "distance_mi": "0.89", "owner": "Bill McMorris", "address": "1225 Creek Rd", "report_url": "https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=669884&Type=ReportWellMain&Source=W", "is_recommended": false}, {"tn": "270918", "lat": 30.199722, "lon": -98.097778, "depth_ft": "530", "distance_mi": "0.94", "owner": "PAUL ALBINI-DSYSA BASEBALL FIELD", "address": "100 BAIRD LANE", "report_url": "https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=270918&Type=ReportWellMain&Source=W", "is_recommended": false}, {"tn": "162502", "lat": 30.199167, "lon": -98.098611, "depth_ft": "540", "distance_mi": "0.95", "owner": "D.S.Y.S.A.", "address": "Hope Hanks Blvd.", "report_url": "https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=162502&Type=ReportWellMain&Source=W", "is_recommended": false}, {"tn": "116119", "lat": 30.19, "lon": -98.071667, "depth_ft": "570", "distance_mi": "0.95", "owner": "POE SHELTON", "address": "700 HWY. 290 EAST", "report_url": "https://www3.twdb.texas.gov/apps/WaterDataInteractive/GetReports.aspx?Num=116119&Type=ReportWellMain&Source=W", "is_recommended": false}]};
+    const map = L.map('map').setView([data.center.lat, data.center.lon], 11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap',
+      maxZoom: 19,
+    }).addTo(map);
+
+    const subjectIcon = L.divIcon({
+      className: 'subject-icon',
+      html: '<div style="background:#d00;border:2px solid #fff;border-radius:50%;width:16px;height:16px;box-shadow:0 0 0 2px #d00;"></div>',
+      iconSize: [16,16], iconAnchor: [8,8]
+    });
+    L.marker([data.center.lat, data.center.lon], {icon: subjectIcon})
+      .addTo(map)
+      .bindPopup('<b>Subject address</b><br>' + data.center.address);
+
+    const bounds = [[data.center.lat, data.center.lon]];
+    data.wells.forEach((w, i) => {
+      const isRec = w.is_recommended;
+      const color = isRec ? '#0b6bcb' : '#444';
+      const icon = L.divIcon({
+        className: 'well-icon',
+        html: `<div style="background:${color};color:#fff;border:2px solid #fff;border-radius:50%;width:24px;height:24px;line-height:20px;text-align:center;font-size:12px;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.3);">${i+1}</div>`,
+        iconSize: [24,24], iconAnchor: [12,12]
+      });
+      L.marker([w.lat, w.lon], {icon})
+        .addTo(map)
+        .bindPopup(
+          `<b>Well #${i+1}${isRec ? ' &middot; recommended' : ''}</b><br>` +
+          `Depth: <b>${w.depth_ft} ft</b><br>` +
+          `Distance: ${w.distance_mi} mi<br>` +
+          (w.owner ? `${w.owner}<br>` : '') +
+          (w.address ? `${w.address}<br>` : '') +
+          `<a href="${w.report_url}" target="_blank" rel="noopener">Open TWDB well log &raquo;</a>`
+        );
+      bounds.push([w.lat, w.lon]);
+    });
+    map.fitBounds(bounds, {padding:[40,40]});
+  </script>
+</body>
+</html>
