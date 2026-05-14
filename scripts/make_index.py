@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
-"""Generate docs/index.html — the branded landing page shown at the bare
-GitHub Pages URL (https://sambww.github.io/waterwell/).
+"""Generate docs/index.html — the customer-facing search page.
 
-Does NOT list customer reports — each report URL is shared individually."""
+Visitors type any Texas address; the page geocodes via the Google Maps JS API,
+fetches the relevant pre-built well-data tiles from docs/data/, finds the 10
+nearest water-supply wells, and renders a branded report inline. The URL
+updates with query params so the report is shareable.
+
+Run once after `build_index.py`. No CLI flags."""
 
 from pathlib import Path
-from generate_report import BRAND, BRAND_CSS, REPORTS_DIR
+from generate_report import BRAND, BRAND_CSS, REPORTS_DIR, TWDB_REPORT_URL
+
+
+GOOGLE_MAPS_PUBLIC_KEY = "AIzaSyDqiqCo6Qn-KPc8imgDqaWeRbVnlG_GKK4"
+
 
 INDEX_TEMPLATE = """<!doctype html>
 <html lang="en">
@@ -13,40 +21,146 @@ INDEX_TEMPLATE = """<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{brand_name} &mdash; Water Well Depth Lookup</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
     {brand_css}
+
     .hero {{
       background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
-      color:#fff; padding:80px 24px 100px; text-align:center;
+      color:#fff; padding:64px 24px 88px; text-align:center;
     }}
-    .hero h1 {{ margin:0 0 14px; font-size:36px; font-weight:600; line-height:1.2; }}
-    .hero p {{ margin:0 auto 28px; max-width:640px; font-size:17px; opacity:.92; line-height:1.55; }}
-    .hero-cta {{ display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }}
-    .btn {{
-      display:inline-block; padding:14px 26px; border-radius:8px;
-      font-weight:600; text-decoration:none; transition:transform .15s, box-shadow .15s;
+    .hero h1 {{ margin:0 0 12px; font-size:34px; font-weight:600; line-height:1.2; }}
+    .hero p.lead {{ margin:0 auto 30px; max-width:640px; font-size:17px; opacity:.92; line-height:1.55; }}
+
+    .search-card {{
+      max-width:680px; margin:0 auto; background:#fff; border-radius:14px;
+      padding:22px 22px 18px; box-shadow:0 14px 40px rgba(0,0,0,.25); text-align:left;
     }}
-    .btn:hover {{ transform:translateY(-1px); box-shadow:0 4px 14px rgba(0,0,0,.18); text-decoration:none; }}
-    .btn-primary {{ background:var(--green); color:#fff; }}
-    .btn-primary:hover {{ background:var(--green-dark); }}
-    .btn-secondary {{ background:rgba(255,255,255,.12); color:#fff; border:1px solid rgba(255,255,255,.35); }}
-    .wrap {{ max-width:980px; margin:0 auto; padding:48px 24px; }}
-    .cards {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:20px; margin-top:8px; }}
-    .card {{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:24px; }}
-    .card h3 {{ margin:0 0 8px; color:var(--navy); font-size:17px; }}
+    .search-card label {{
+      display:block; font-size:12px; text-transform:uppercase; letter-spacing:.06em;
+      color:var(--muted); font-weight:600; margin-bottom:8px;
+    }}
+    .search-row {{ display:flex; gap:10px; align-items:stretch; }}
+    .address-wrap {{ flex:1; min-width:0; display:flex; position:relative; }}
+    .search-row input {{
+      flex:1; padding:14px 16px; font-size:16px; border:1px solid var(--border);
+      border-radius:8px; color:var(--fg); background:#fff; min-width:0; width:100%;
+    }}
+    .search-row input:focus {{ outline:none; border-color:var(--blue); box-shadow:0 0 0 3px rgba(30,136,229,.15); }}
+    /* Google Places Autocomplete web component */
+    gmp-place-autocomplete {{
+      flex:1; width:100%;
+      --gmp-mat-color-primary:#1e88e5;
+      --gmp-mat-color-on-surface:#1c1c1e;
+    }}
+    .search-row button {{
+      padding:14px 22px; font-size:15px; font-weight:600; color:#fff;
+      background:var(--green); border:0; border-radius:8px; cursor:pointer;
+      transition:background .15s;
+    }}
+    .search-row button:hover {{ background:var(--green-dark); }}
+    .search-row button:disabled {{ background:#9aa0a6; cursor:wait; }}
+    .search-hint {{ margin:10px 0 0; font-size:12px; color:var(--muted); }}
+    .search-error {{ margin:10px 0 0; font-size:13px; color:#b3261e; display:none; }}
+
+    /* Report container */
+    .report {{ display:none; }}
+    .report.visible {{ display:block; }}
+
+    .report-meta {{ background:#fff; padding:18px 24px 0; }}
+    .report-meta .eyebrow {{
+      font-size:11px; text-transform:uppercase; letter-spacing:.08em;
+      color:var(--muted); font-weight:600;
+    }}
+    .report-meta h2 {{ margin:6px 0 0; font-size:22px; color:var(--navy); }}
+    .report-meta .meta {{ font-size:13px; color:var(--muted); margin-top:4px; }}
+
+    .wrap {{ max-width:1100px; margin:0 auto; padding:24px; }}
+
+    .summary {{
+      background:var(--card); border:1px solid var(--border); border-radius:14px;
+      padding:18px; margin-bottom:24px; box-shadow:0 4px 16px rgba(28,63,110,.08);
+      display:flex; flex-wrap:wrap; gap:14px;
+    }}
+    .stat {{ flex:1 1 220px; padding:14px 18px; border-radius:10px; background:#fafbfc; border:1px solid var(--border); }}
+    .stat.primary {{ background:var(--green-soft); border-color:#cfe3c4; }}
+    .stat.secondary {{ background:var(--accent-soft); border-color:#c8defa; }}
+    .stat .label {{ color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.07em; font-weight:600; }}
+    .stat .value {{ font-size:30px; font-weight:700; margin-top:4px; line-height:1.1; }}
+    .stat.primary .value {{ color:var(--green-dark); }}
+    .stat.secondary .value {{ color:var(--navy); }}
+    .stat .value small {{ font-size:13px; font-weight:400; color:var(--muted); margin-left:6px; }}
+
+    .rationale {{
+      background:var(--card); border:1px solid var(--border); border-radius:12px;
+      padding:18px 22px; margin-bottom:24px; color:#3a3a3a; line-height:1.6;
+    }}
+    .rationale b {{ color:var(--navy); }}
+
+    #map {{
+      height:520px; border:1px solid var(--border); border-radius:12px;
+      margin-bottom:24px; box-shadow:0 2px 8px rgba(0,0,0,.04);
+    }}
+
+    .table-wrap {{ background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; margin-bottom:24px; }}
+    table {{ width:100%; border-collapse:collapse; }}
+    th, td {{ padding:12px 14px; text-align:left; font-size:14px; border-bottom:1px solid var(--border); }}
+    th {{ background:#f9fafb; color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.06em; }}
+    tr:last-child td {{ border-bottom:0; }}
+    tr.recommended td {{ background:var(--green-soft); }}
+    tr.recommended td:first-child {{ box-shadow:inset 3px 0 0 var(--green); }}
+    .pill {{
+      display:inline-block; padding:2px 8px; border-radius:999px;
+      background:var(--green); color:#fff; font-size:10px; margin-left:6px;
+      font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+    }}
+
+    .cta {{
+      background: linear-gradient(135deg, var(--green) 0%, var(--green-dark) 100%);
+      color:#fff; padding:32px 28px; border-radius:14px; text-align:center;
+    }}
+    .cta h3 {{ margin:0 0 8px; font-size:22px; font-weight:600; }}
+    .cta p {{ margin:0 0 18px; opacity:.95; max-width:560px; margin-left:auto; margin-right:auto; }}
+    .cta-buttons {{ display:flex; flex-wrap:wrap; gap:12px; justify-content:center; }}
+    .cta-btn {{
+      background:#fff; color:var(--green-dark); padding:12px 22px;
+      border-radius:8px; font-weight:600; text-decoration:none; display:inline-block;
+      transition:transform .15s, box-shadow .15s;
+    }}
+    .cta-btn:hover {{ transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,.15); text-decoration:none; }}
+    .cta-btn.alt {{ background:rgba(255,255,255,.12); color:#fff; border:1px solid rgba(255,255,255,.35); }}
+
+    .disclaimer {{
+      max-width:1100px; margin:0 auto; padding:24px 24px 8px;
+      color:var(--muted); font-size:12px; line-height:1.6;
+    }}
+
+    .loader {{ text-align:center; padding:40px 24px; color:var(--muted); }}
+    .loader .spinner {{
+      display:inline-block; width:36px; height:36px; border:3px solid #eef0f3;
+      border-top-color:var(--navy); border-radius:50%; animation:spin .8s linear infinite;
+      margin-bottom:12px;
+    }}
+    @keyframes spin {{ to {{ transform:rotate(360deg); }} }}
+
+    /* How-it-works (only shown before search) */
+    .howit {{ max-width:980px; margin:0 auto; padding:48px 24px; }}
+    .howit h3.section {{ font-size:22px; color:var(--navy); margin:0 0 18px; }}
+    .cards {{ display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:20px; }}
+    .card {{ background:#fff; border:1px solid var(--border); border-radius:12px; padding:24px; }}
+    .card h4 {{ margin:0 0 8px; color:var(--navy); font-size:17px; }}
     .card p {{ margin:0; color:#444; line-height:1.55; }}
     .badge {{
       display:inline-block; width:38px; height:38px; line-height:38px;
       text-align:center; background:var(--green-soft); color:var(--green-dark);
       border-radius:50%; font-weight:700; margin-bottom:12px;
     }}
-    h2.section {{ font-size:22px; color:var(--navy); margin:0 0 18px; }}
   </style>
 </head>
 <body>
   <div class="brandbar">
     <div class="inner">
-      <a href="{brand_website}" target="_blank" rel="noopener"><img src="{brand_logo}" alt="{brand_name}"></a>
+      <a href="{brand_website}" target="_blank" rel="noopener"><img src="logo.jpg" alt="{brand_name}"></a>
       <div class="company">
         <span class="name">{brand_name}</span>
         <span class="tag">{brand_tagline}</span>
@@ -56,31 +170,79 @@ INDEX_TEMPLATE = """<!doctype html>
   </div>
 
   <section class="hero">
-    <h1>Water Well Depth Lookup</h1>
-    <p>For every estimate request, we generate a custom report showing the ten nearest historical water wells from the Texas Water Development Board, with recommended drilling depths based on real local data.</p>
-    <div class="hero-cta">
-      <a href="tel:{brand_phone_tel}" class="btn btn-primary">Call {brand_phone_display}</a>
-      <a href="{brand_website}" target="_blank" rel="noopener" class="btn btn-secondary">Visit our website</a>
-    </div>
+    <h1>How deep do I need to drill?</h1>
+    <p class="lead">Enter your address to see the depth of the 10 nearest water wells in the Texas Water Development Board database &mdash; with a recommended target depth based on real local drilling history.</p>
+    <form class="search-card" id="search-form" autocomplete="off">
+      <label for="address">Your property address</label>
+      <div class="search-row">
+        <div class="address-wrap" id="address-wrap">
+          <input id="address" name="address" type="text" placeholder="123 County Road, Magnolia, TX" required>
+        </div>
+        <button id="submit-btn" type="submit">Look up depth</button>
+      </div>
+      <p class="search-hint">Works for any Texas address. Your data is not stored.</p>
+      <p class="search-error" id="search-error"></p>
+    </form>
   </section>
 
-  <div class="wrap">
-    <h2 class="section">How it works</h2>
+  <!-- Loader -->
+  <div class="loader" id="loader" style="display:none;">
+    <div class="spinner"></div>
+    <div>Finding the closest water wells&hellip;</div>
+  </div>
+
+  <!-- The report renders here -->
+  <div class="report" id="report">
+    <div class="report-meta">
+      <div class="wrap" style="padding-top:24px; padding-bottom:0;">
+        <div class="eyebrow">Water well depth estimate</div>
+        <h2 id="r-address"></h2>
+        <div class="meta" id="r-meta"></div>
+      </div>
+    </div>
+
+    <div class="wrap">
+      <section class="summary" id="r-summary"></section>
+      <div class="rationale" id="r-rationale"></div>
+      <div id="map"></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Depth (ft)</th><th>Distance (mi)</th><th>Owner / Address</th><th>County</th><th>Drilled</th><th>Well Log</th></tr></thead>
+        <tbody id="r-rows"></tbody>
+      </table></div>
+
+      <section class="cta">
+        <h3>Ready for your full estimate?</h3>
+        <p>The depth above is a starting point from public records. Let our team walk your property and put together a complete proposal.</p>
+        <div class="cta-buttons">
+          <a href="tel:{brand_phone_tel}" class="cta-btn">Call {brand_phone_display}</a>
+          <a id="r-mailto" href="mailto:{brand_email}" class="cta-btn alt">Email {brand_email}</a>
+          <a href="{brand_website}" class="cta-btn alt" target="_blank" rel="noopener">Visit our website</a>
+        </div>
+      </section>
+    </div>
+
+    <div class="disclaimer">
+      Source: Texas Water Development Board Submitted Driller's Reports
+      (<a href="https://www.twdb.texas.gov/groundwater/data/drillersdb.asp" target="_blank" rel="noopener">TWDB SDR</a>).
+      Recommended depth is the deepest of the 10 nearest water-supply wells in the public database and is provided as an estimate based on historical drilling records in the area. Actual depth required for your site depends on soil conditions, water table, and aquifer characteristics observed during drilling. A final estimate will be provided after site assessment by a licensed driller.
+    </div>
+  </div>
+
+  <!-- How-it-works (visible only when no search has been run yet) -->
+  <div class="howit" id="howit">
+    <h3 class="section">How this works</h3>
     <div class="cards">
       <div class="card">
-        <div class="badge">1</div>
-        <h3>You request an estimate</h3>
-        <p>Call us or fill out the form on our website with your property address. We confirm the request and build your report the same day.</p>
+        <div class="badge">1</div><h4>You enter your address</h4>
+        <p>We locate your property and pull the ten closest registered water wells from the Texas Water Development Board database &mdash; over 700,000 wells statewide.</p>
       </div>
       <div class="card">
-        <div class="badge">2</div>
-        <h3>We pull the nearest wells</h3>
-        <p>Your custom report locates the ten closest registered water wells from the Texas Water Development Board database, plotted on a live map.</p>
+        <div class="badge">2</div><h4>We map and rank them</h4>
+        <p>Each well is plotted on a live map with depth, distance, and a link to the official state log so you can verify the numbers yourself.</p>
       </div>
       <div class="card">
-        <div class="badge">3</div>
-        <h3>You get a recommended depth</h3>
-        <p>We recommend a target depth based on the deepest, most reliable nearby wells &mdash; with links to every well's official log so you can verify the numbers.</p>
+        <div class="badge">3</div><h4>You see a target depth</h4>
+        <p>We recommend a target depth based on the deepest, most reliable nearby wells. Bookmark or share the result &mdash; the link works for anyone.</p>
       </div>
     </div>
   </div>
@@ -104,6 +266,351 @@ INDEX_TEMPLATE = """<!doctype html>
       </div>
     </div>
   </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // ----------- Config / state -----------------------------------------------
+    const TILE_SIZE = 0.25;
+    const TWDB_URL = (tn) => `{twdb_url_template}`.replace('{{tn}}', encodeURIComponent(tn));
+
+    const form = document.getElementById('search-form');
+    let addressInput = document.getElementById('address');     // may be swapped for the autocomplete element
+    const addressWrap = document.getElementById('address-wrap');
+    let pickedPlace = null;                                    // {{lat, lon, label}} when picked via autocomplete
+    const submitBtn = document.getElementById('submit-btn');
+    const errorEl = document.getElementById('search-error');
+    const loader = document.getElementById('loader');
+    const reportEl = document.getElementById('report');
+    const howit = document.getElementById('howit');
+
+    let geocoder = null;        // set when Google Maps JS loads
+    let map = null;             // Leaflet map instance (reused)
+    let pendingSearch = null;   // queued search if Maps isn't ready yet
+
+    // ----------- Google Maps loader ------------------------------------------
+    window.initMaps = async function() {{
+      geocoder = new google.maps.Geocoder();
+      await setupAutocomplete();
+      if (pendingSearch) {{
+        const q = pendingSearch; pendingSearch = null;
+        runSearch(q);
+      }}
+    }};
+
+    async function setupAutocomplete() {{
+      try {{
+        const {{ PlaceAutocompleteElement }} = await google.maps.importLibrary('places');
+        const ac = new PlaceAutocompleteElement({{
+          componentRestrictions: {{ country: ['us'] }},
+          types: ['address'],
+        }});
+        ac.id = 'address';
+        // Carry over any text the user already typed.
+        const previousValue = addressInput.value || '';
+        addressWrap.innerHTML = '';
+        addressWrap.appendChild(ac);
+        addressInput = ac;
+        if (previousValue) {{
+          // The web component exposes a `value` setter on the inner input.
+          requestAnimationFrame(() => {{ try {{ ac.value = previousValue; }} catch (e) {{}} }});
+        }}
+
+        ac.addEventListener('gmp-select', async (event) => {{
+          try {{
+            const place = event.placePrediction.toPlace();
+            await place.fetchFields({{ fields: ['displayName', 'formattedAddress', 'location'] }});
+            pickedPlace = {{
+              lat: place.location.lat(),
+              lon: place.location.lng(),
+              label: place.formattedAddress || place.displayName,
+            }};
+            runSearchWithCoords(pickedPlace.label, pickedPlace.lat, pickedPlace.lon);
+          }} catch (err) {{
+            console.warn('Place selection failed', err);
+            showError("Couldn't read that place. Try typing again or pressing Look up depth.");
+          }}
+        }});
+      }} catch (e) {{
+        console.warn('Place Autocomplete unavailable — falling back to plain input.', e);
+      }}
+    }}
+
+    // ----------- Geo helpers --------------------------------------------------
+    function tileId(lat, lon) {{
+      return `${{Math.floor(lat / TILE_SIZE)}}_${{Math.floor(lon / TILE_SIZE)}}`;
+    }}
+    function nearbyTiles(lat, lon) {{
+      const tlat = Math.floor(lat / TILE_SIZE);
+      const tlon = Math.floor(lon / TILE_SIZE);
+      const out = [];
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++)
+          out.push(`${{tlat + dy}}_${{tlon + dx}}`);
+      return out;
+    }}
+    function haversineMi(lat1, lon1, lat2, lon2) {{
+      const R = 3958.7613;
+      const p1 = lat1 * Math.PI / 180, p2 = lat2 * Math.PI / 180;
+      const dp = (lat2 - lat1) * Math.PI / 180;
+      const dl = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    }}
+
+    // ----------- Tile fetcher (with cache) -----------------------------------
+    const tileCache = new Map();
+    async function fetchTile(id) {{
+      if (tileCache.has(id)) return tileCache.get(id);
+      try {{
+        const resp = await fetch(`data/${{id}}.json`);
+        if (!resp.ok) {{ tileCache.set(id, []); return []; }}
+        const data = await resp.json();
+        tileCache.set(id, data);
+        return data;
+      }} catch (e) {{ tileCache.set(id, []); return []; }}
+    }}
+
+    async function nearestWells(lat, lon, k) {{
+      // Try 3x3, then expand if we don't have enough wells.
+      let radius = 1;
+      while (radius <= 4) {{
+        const tlat = Math.floor(lat / TILE_SIZE), tlon = Math.floor(lon / TILE_SIZE);
+        const ids = [];
+        for (let dy = -radius; dy <= radius; dy++)
+          for (let dx = -radius; dx <= radius; dx++)
+            ids.push(`${{tlat + dy}}_${{tlon + dx}}`);
+        const tiles = await Promise.all(ids.map(fetchTile));
+        const all = tiles.flat();
+        if (all.length >= k * 3 || radius === 4) {{
+          const ranked = all.map(w => {{
+            const d = haversineMi(lat, lon, w[1], w[2]);
+            return {{ d, w }};
+          }}).sort((a, b) => a.d - b.d).slice(0, k);
+          return ranked;
+        }}
+        radius++;
+      }}
+      return [];
+    }}
+
+    // ----------- Recommendation logic ----------------------------------------
+    function recommend(wells) {{
+      const depths = wells.map(x => x.w[3]).slice().sort((a, b) => b - a);
+      const recommended = depths[0];
+      const cluster = depths.filter(d => recommended - d <= 10).length;
+      let alternative = null;
+      for (const d of depths.slice(1)) {{
+        if (recommended - d >= 20) {{ alternative = d; break; }}
+      }}
+      return {{ recommended, cluster, alternative }};
+    }}
+
+    // ----------- Render -------------------------------------------------------
+    function renderReport(lat, lon, placeLabel, wells, rec) {{
+      // Hide how-it-works, show report
+      howit.style.display = 'none';
+      reportEl.classList.add('visible');
+
+      const minDepth = Math.min(...wells.map(x => x.w[3]));
+      const maxDepth = Math.max(...wells.map(x => x.w[3]));
+      const maxDist = Math.max(...wells.map(x => x.d));
+      const recFt = Math.round(rec.recommended);
+
+      // Headers
+      document.getElementById('r-address').textContent = placeLabel;
+      document.getElementById('r-meta').textContent =
+        `Based on ${{wells.length}} wells within ${{maxDist.toFixed(1)}} miles · prepared ${{new Date().toLocaleDateString('en-US', {{year:'numeric', month:'long', day:'numeric'}})}}`;
+
+      // Mailto with prefilled subject
+      document.getElementById('r-mailto').href =
+        `mailto:{brand_email}?subject=${{encodeURIComponent('Estimate request for ' + placeLabel)}}`;
+
+      // Summary cards
+      const altCard = rec.alternative !== null
+        ? `<div class="stat secondary"><div class="label">Alternative Depth</div><div class="value">${{Math.round(rec.alternative)}} ft<small>next-deepest distinct</small></div></div>`
+        : '';
+      const clusterNote = rec.cluster > 1 ? ` (${{rec.cluster}} wells within 10 ft)` : '';
+      document.getElementById('r-summary').innerHTML = `
+        <div class="stat primary"><div class="label">Recommended Depth</div><div class="value">${{recFt}} ft<small>${{clusterNote}}</small></div></div>
+        ${{altCard}}
+        <div class="stat"><div class="label">Depth Range Observed</div><div class="value">${{Math.round(minDepth)}}–${{Math.round(maxDepth)}} ft<small>across ${{wells.length}} wells</small></div></div>
+      `;
+
+      // Rationale
+      const rationaleBits = [`The deepest of the 10 nearest wells reaches <b>${{recFt}} ft</b>.`];
+      if (rec.cluster > 1) rationaleBits.push(`${{rec.cluster}} of the 10 are within 10 ft of that depth — high confidence.`);
+      if (rec.alternative !== null) rationaleBits.push(`If you want a shallower option, the next distinct depth is ${{Math.round(rec.alternative)}} ft.`);
+      document.getElementById('r-rationale').innerHTML = rationaleBits.join(' ');
+
+      // Table rows
+      const rows = wells.map((x, i) => {{
+        const w = x.w;
+        const isRec = Math.abs(w[3] - rec.recommended) < 0.01;
+        const ownerAddr = [w[5], w[6]].filter(Boolean).map(escapeHtml).join(' · ') || '—';
+        const url = TWDB_URL(w[0]);
+        return `<tr${{isRec ? ' class="recommended"' : ''}}>
+          <td>${{i + 1}}</td>
+          <td>${{Math.round(w[3])}} ft${{isRec ? ' <span class="pill">recommended</span>' : ''}}</td>
+          <td>${{x.d.toFixed(2)}}</td>
+          <td>${{ownerAddr}}</td>
+          <td>${{escapeHtml(w[4] || '—')}}</td>
+          <td>${{escapeHtml(w[7] || '—')}}</td>
+          <td><a href="${{url}}" target="_blank" rel="noopener">open log »</a></td>
+        </tr>`;
+      }}).join('');
+      document.getElementById('r-rows').innerHTML = rows;
+
+      // Map (rebuild if exists)
+      if (map) {{ map.remove(); map = null; }}
+      map = L.map('map').setView([lat, lon], 11);
+      L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+        attribution: '&copy; OpenStreetMap', maxZoom: 19,
+      }}).addTo(map);
+
+      const subjectIcon = L.divIcon({{
+        className: 'subject-icon',
+        html: '<div style="background:#1c3f6e;border:3px solid #fff;border-radius:50%;width:18px;height:18px;box-shadow:0 0 0 3px rgba(28,63,110,.35);"></div>',
+        iconSize:[18,18], iconAnchor:[9,9]
+      }});
+      L.marker([lat, lon], {{icon: subjectIcon}}).addTo(map).bindPopup('<b>Subject address</b><br>' + escapeHtml(placeLabel));
+
+      const bounds = [[lat, lon]];
+      wells.forEach((x, i) => {{
+        const w = x.w;
+        const isRec = Math.abs(w[3] - rec.recommended) < 0.01;
+        const color = isRec ? '#4a8a3a' : '#1e88e5';
+        const icon = L.divIcon({{
+          className: 'well-icon',
+          html: `<div style="background:${{color}};color:#fff;border:2px solid #fff;border-radius:50%;width:26px;height:26px;line-height:22px;text-align:center;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,.3);">${{i + 1}}</div>`,
+          iconSize:[26,26], iconAnchor:[13,13]
+        }});
+        L.marker([w[1], w[2]], {{icon}}).addTo(map).bindPopup(
+          `<b>Well #${{i + 1}}${{isRec ? ' · recommended' : ''}}</b><br>` +
+          `Depth: <b>${{Math.round(w[3])}} ft</b><br>` +
+          `Distance: ${{x.d.toFixed(2)}} mi<br>` +
+          (w[5] ? `${{escapeHtml(w[5])}}<br>` : '') +
+          (w[6] ? `${{escapeHtml(w[6])}}<br>` : '') +
+          `<a href="${{TWDB_URL(w[0])}}" target="_blank" rel="noopener">Open TWDB well log »</a>`
+        );
+        bounds.push([w[1], w[2]]);
+      }});
+      map.fitBounds(bounds, {{padding:[40,40]}});
+
+      // Scroll to the report
+      reportEl.scrollIntoView({{behavior:'smooth', block:'start'}});
+    }}
+
+    function escapeHtml(s) {{
+      return (s || '').replace(/[&<>"']/g, c => ({{
+        '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+      }}[c]));
+    }}
+
+    // ----------- Search orchestration ----------------------------------------
+    function showError(msg) {{
+      errorEl.textContent = msg;
+      errorEl.style.display = 'block';
+    }}
+    function clearError() {{ errorEl.style.display = 'none'; }}
+    function setBusy(busy) {{
+      submitBtn.disabled = busy;
+      submitBtn.textContent = busy ? 'Looking up…' : 'Look up depth';
+      loader.style.display = busy ? 'block' : 'none';
+    }}
+
+    async function runSearch(address) {{
+      clearError();
+      setBusy(true);
+      try {{
+        if (!geocoder) {{ pendingSearch = address; return; }}
+        const {{lat, lon, place}} = await new Promise((resolve, reject) => {{
+          geocoder.geocode({{ address }}, (results, status) => {{
+            if (status !== 'OK' || !results || !results.length) {{
+              reject(new Error(`We couldn't find that address (${{status}}). Try a more specific street + city.`));
+              return;
+            }}
+            const r = results[0];
+            resolve({{
+              lat: r.geometry.location.lat(),
+              lon: r.geometry.location.lng(),
+              place: r.formatted_address,
+            }});
+          }});
+        }});
+        await runSearchWithCoords(place, lat, lon);
+      }} catch (e) {{
+        showError(e.message || 'Something went wrong. Please try again.');
+        howit.style.display = '';
+        reportEl.classList.remove('visible');
+      }} finally {{
+        setBusy(false);
+      }}
+    }}
+
+    // Variant used when we already have lat/lng (from autocomplete pick or URL params).
+    async function runSearchWithCoords(label, lat, lon) {{
+      clearError();
+      setBusy(true);
+      try {{
+        const wells = await nearestWells(lat, lon, 10);
+        if (!wells.length) throw new Error('No water wells found near that location.');
+        const rec = recommend(wells);
+        renderReport(lat, lon, label, wells, rec);
+        const params = new URLSearchParams({{
+          address: label, lat: lat.toFixed(6), lng: lon.toFixed(6)
+        }});
+        history.replaceState(null, '', '?' + params.toString());
+      }} catch (e) {{
+        showError(e.message || 'Something went wrong. Please try again.');
+        howit.style.display = '';
+        reportEl.classList.remove('visible');
+      }} finally {{
+        setBusy(false);
+      }}
+    }}
+
+    // ----------- Wire up form -------------------------------------------------
+    form.addEventListener('submit', (e) => {{
+      e.preventDefault();
+      // If the user picked from autocomplete, just rerun with those coords.
+      if (pickedPlace) {{
+        runSearchWithCoords(pickedPlace.label, pickedPlace.lat, pickedPlace.lon);
+        return;
+      }}
+      const addr = (addressInput.value || '').trim();
+      if (!addr) return;
+      runSearch(addr);
+    }});
+
+    // ----------- Auto-run if URL has params ----------------------------------
+    (function() {{
+      const params = new URLSearchParams(window.location.search);
+      const lat = parseFloat(params.get('lat'));
+      const lon = parseFloat(params.get('lng'));
+      const place = params.get('address');
+      if (place && !isNaN(lat) && !isNaN(lon)) {{
+        addressInput.value = place;
+        // Skip geocoding — use the lat/lng directly
+        setBusy(true);
+        nearestWells(lat, lon, 10).then(wells => {{
+          if (!wells.length) {{
+            showError('No water wells found near that location.');
+            setBusy(false);
+            return;
+          }}
+          renderReport(lat, lon, place, wells, recommend(wells));
+          setBusy(false);
+        }}).catch(e => {{
+          showError(e.message || 'Could not load wells.');
+          setBusy(false);
+        }});
+      }} else if (params.get('address')) {{
+        addressInput.value = params.get('address');
+        runSearch(params.get('address'));
+      }}
+    }})();
+  </script>
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key={maps_key}&libraries=places&v=weekly&loading=async&callback=initMaps"></script>
 </body>
 </html>
 """
@@ -120,10 +627,11 @@ def main():
         brand_email=BRAND["email"],
         brand_website=BRAND["website"],
         brand_website_display=BRAND["website_display"],
-        brand_logo=BRAND["logo_filename"],
         brand_license_blurb=BRAND["license_blurb"],
         brand_location_blurb=BRAND["location_blurb"],
         brand_service_area_blurb=BRAND["service_area_blurb"],
+        twdb_url_template=TWDB_REPORT_URL,
+        maps_key=GOOGLE_MAPS_PUBLIC_KEY,
     )
     out = REPORTS_DIR / "index.html"
     out.write_text(html, encoding="utf-8")
