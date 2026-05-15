@@ -328,8 +328,8 @@ footer.brand p { margin:0 0 4px; font-size:14px; color:#444; }
       try {
         const { PlaceAutocompleteElement } = await google.maps.importLibrary('places');
         const ac = new PlaceAutocompleteElement({
-          componentRestrictions: { country: ['us'] },
-          types: ['address'],
+          includedRegionCodes: ['us'],
+          includedPrimaryTypes: ['street_address', 'premise', 'subpremise'],
         });
         ac.id = 'address';
         // Carry over any text the user already typed.

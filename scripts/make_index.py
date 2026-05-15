@@ -301,8 +301,8 @@ INDEX_TEMPLATE = """<!doctype html>
       try {{
         const {{ PlaceAutocompleteElement }} = await google.maps.importLibrary('places');
         const ac = new PlaceAutocompleteElement({{
-          componentRestrictions: {{ country: ['us'] }},
-          types: ['address'],
+          includedRegionCodes: ['us'],
+          includedPrimaryTypes: ['street_address', 'premise', 'subpremise'],
         }});
         ac.id = 'address';
         // Carry over any text the user already typed.
