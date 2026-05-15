@@ -14,7 +14,7 @@
 
 const CONFIG = {
   /** Match any email with this phrase in the subject (case-insensitive). */
-  SUBJECT_PATTERN: 'has not received an estimate',
+  SUBJECT_PATTERN: 'Has Not Received Estimate',
 
   /** Only look at threads from the last N days. */
   LOOKBACK_DAYS: 14,
