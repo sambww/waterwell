@@ -318,6 +318,24 @@ function installTrigger() {
 }
 
 /**
+ * Mark every currently-matching thread as already-handled, with NO emails
+ * sent. Use this once after deployment if you want to ignore the backlog and
+ * only get notifications for new emails going forward.
+ */
+function markBacklogProcessed() {
+  const processed = getOrCreateLabel_(CONFIG.LABEL_PROCESSED);
+  const query = [
+    `subject:"${CONFIG.SUBJECT_PATTERN}"`,
+    `-label:"${CONFIG.LABEL_PROCESSED}"`,
+    `-label:"${CONFIG.LABEL_NEEDS_REVIEW}"`,
+    `newer_than:${CONFIG.LOOKBACK_DAYS}d`,
+  ].join(' ');
+  const threads = GmailApp.search(query, 0, 100);
+  threads.forEach((t) => t.addLabel(processed));
+  console.log(`Marked ${threads.length} backlog thread(s) as processed (no emails sent).`);
+}
+
+/**
  * Remove the `Waterwell-Processed` and `Waterwell-Needs-Review` labels from
  * every thread that has them. Use this if you want to reprocess everything
  * (e.g. after fixing a bug). Doesn't delete the labels, just unlabels.
