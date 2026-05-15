@@ -74,15 +74,15 @@ function handleThread_(thread, processed, needsReview) {
 
   const extracted = extractAddress_(subject, body);
   if (!extracted) {
-    console.log(`No address found in "${subject}". Labeling for review.`);
-    thread.addLabel(needsReview);
+    console.log(`No address found in "${subject}".${CONFIG.DRY_RUN ? '' : ' Labeling for review.'}`);
+    if (!CONFIG.DRY_RUN) thread.addLabel(needsReview);
     return;
   }
 
   const geo = geocodeInTexas_(extracted.address);
   if (!geo) {
-    console.log(`Geocoding failed for "${extracted.address}". Labeling for review.`);
-    thread.addLabel(needsReview);
+    console.log(`Geocoding failed for "${extracted.address}".${CONFIG.DRY_RUN ? '' : ' Labeling for review.'}`);
+    if (!CONFIG.DRY_RUN) thread.addLabel(needsReview);
     return;
   }
 
@@ -93,11 +93,11 @@ function handleThread_(thread, processed, needsReview) {
     console.log(`[DRY RUN] Would email ${CONFIG.NOTIFY_EMAIL}:`);
     console.log(`  Subject: ${notif.subject}`);
     console.log(notif.body);
-  } else {
-    GmailApp.sendEmail(CONFIG.NOTIFY_EMAIL, notif.subject, notif.body);
-    console.log(`Notified ${CONFIG.NOTIFY_EMAIL}: ${notif.subject}`);
+    return;  // dry run = no side effects
   }
+  GmailApp.sendEmail(CONFIG.NOTIFY_EMAIL, notif.subject, notif.body);
   thread.addLabel(processed);
+  console.log(`Notified ${CONFIG.NOTIFY_EMAIL}: ${notif.subject}`);
 }
 
 function buildNotification_(thread, extracted, geo, url) {
@@ -315,6 +315,25 @@ function installTrigger() {
     .everyMinutes(5)
     .create();
   console.log('Installed 5-minute trigger.');
+}
+
+/**
+ * Remove the `Waterwell-Processed` and `Waterwell-Needs-Review` labels from
+ * every thread that has them. Use this if you want to reprocess everything
+ * (e.g. after fixing a bug). Doesn't delete the labels, just unlabels.
+ */
+function clearWaterwellLabels() {
+  let removed = 0;
+  [CONFIG.LABEL_PROCESSED, CONFIG.LABEL_NEEDS_REVIEW].forEach((name) => {
+    const label = GmailApp.getUserLabelByName(name);
+    if (!label) return;
+    let threads;
+    do {
+      threads = label.getThreads(0, 100);
+      threads.forEach((t) => { t.removeLabel(label); removed++; });
+    } while (threads.length > 0);
+  });
+  console.log(`Removed Waterwell labels from ${removed} thread(s).`);
 }
 
 function uninstallTrigger() {
