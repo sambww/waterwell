@@ -316,18 +316,24 @@ INDEX_TEMPLATE = """<!doctype html>
         }}
 
         ac.addEventListener('gmp-select', async (event) => {{
+          // The event can fire multiple times around a single selection;
+          // ignore anything without a usable prediction.
+          const prediction = event && event.placePrediction;
+          if (!prediction) return;
           try {{
-            const place = event.placePrediction.toPlace();
+            const place = prediction.toPlace();
             await place.fetchFields({{ fields: ['displayName', 'formattedAddress', 'location'] }});
+            const loc = place.location;
+            if (!loc) return;
             pickedPlace = {{
-              lat: place.location.lat(),
-              lon: place.location.lng(),
-              label: place.formattedAddress || place.displayName,
+              lat: typeof loc.lat === 'function' ? loc.lat() : loc.lat,
+              lon: typeof loc.lng === 'function' ? loc.lng() : loc.lng,
+              label: place.formattedAddress || place.displayName || '',
             }};
             runSearchWithCoords(pickedPlace.label, pickedPlace.lat, pickedPlace.lon);
           }} catch (err) {{
-            console.warn('Place selection failed', err);
-            showError("Couldn't read that place. Try typing again or pressing Look up depth.");
+            // Silent — the Look-up-depth button still works as a fallback.
+            console.warn('Place selection follow-up failed:', err);
           }}
         }});
       }} catch (e) {{
