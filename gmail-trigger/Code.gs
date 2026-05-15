@@ -114,7 +114,21 @@ function handleThread_(thread, processed, needsReview) {
  *   3. Any line in the body that looks like a US street + city + TX
  */
 function extractAddress_(subject, body) {
-  // 1. Labeled line
+  // Collapse whitespace so the regex works across line wraps and the HTML-to-text
+  // conversion that Gmail does (which can sprinkle line breaks anywhere).
+  const flat = body.replace(/\s+/g, ' ');
+
+  // 1. Workiz-style "[Name] located at [ADDRESS] would like an estimate ..."
+  //    Captures everything between "located at " and " would like an estimate".
+  const workizMatch = flat.match(
+    /\blocated at\s+(.+?)\s+would like an estimate/i
+  );
+  if (workizMatch) {
+    const candidate = cleanCandidate_(workizMatch[1]);
+    if (looksLikeAddress_(candidate)) return candidate;
+  }
+
+  // 2. "Service Address:" / "Property Address:" / "Address:" labeled line
   const labelPatterns = [
     /\b(?:property\s+address|service\s+address|site\s+address|job\s+address)\s*[:|]\s*([^\n\r]+)/i,
     /\b(?:address|location|property|site)\s*[:|]\s*([^\n\r]+)/i,
@@ -127,18 +141,18 @@ function extractAddress_(subject, body) {
     }
   }
 
-  // 2. Subject
+  // 3. Subject sometimes has the address tacked on
   const subjectCandidate = cleanCandidate_(stripSubjectPrefix_(subject));
   if (looksLikeAddress_(subjectCandidate)) return subjectCandidate;
 
-  // 3. Body lines
+  // 4. Any body line that looks like a US street address
   const lines = body.split(/\r?\n/);
   for (const raw of lines) {
     const candidate = cleanCandidate_(raw);
     if (looksLikeAddress_(candidate)) return candidate;
   }
 
-  // 4. Two-line addresses ("123 Main St\nCity, TX 12345")
+  // 5. Two-line addresses ("123 Main St\nCity, TX 12345")
   for (let i = 0; i < lines.length - 1; i++) {
     const combined = cleanCandidate_(lines[i] + ', ' + lines[i + 1]);
     if (looksLikeAddress_(combined)) return combined;
@@ -273,15 +287,18 @@ function uninstallTrigger() {
  * the Apps Script editor. It logs what would happen — no Gmail writes.
  */
 function testParse() {
-  const SAMPLE_SUBJECT = 'Lead 8412 has not received an estimate';
+  // A real-shape Workiz auto-reply body (PII swapped for fake details).
+  const SAMPLE_SUBJECT = 'Has Not Received Estimate';
   const SAMPLE_BODY = [
-    'A new lead has been waiting more than 48 hours for an estimate.',
+    'JANE DOE located at 1234 Triple Creek Loop, Livingston, Texas 77351 would like an estimate for a Residential Well Install',
     '',
-    'Customer: Jane Doe',
-    'Phone: (555) 555-1234',
-    'Address: 1234 County Road 200, Liberty Hill, TX 78642',
+    'POLK',
+    'Just Planning & Getting Quotes',
+    'Residential Home & Irrigation',
+    'No, this will be the only water well',
+    'No, there is no community water available',
     '',
-    'Please follow up.',
+    '50gpm - 5Hp - Large Estate & Irrigation (15 heads/zone)',
   ].join('\n');
 
   const address = extractAddress_(SAMPLE_SUBJECT, SAMPLE_BODY);
