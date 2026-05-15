@@ -2,9 +2,10 @@
  * Waterwell — Gmail Trigger (Google Apps Script)
  *
  * Polls Gmail for emails whose subject contains a configured phrase (default:
- * "has not received an estimate"), extracts the customer address from the
- * body, builds a shareable URL pointing at the waterwell depth-report page,
- * and creates a Gmail draft reply on the thread with the URL inserted.
+ * "Has Not Received Estimate"), extracts the customer address from the body,
+ * builds a shareable URL pointing at the Waterwell depth-report page, and
+ * emails a notification to you with the URL + customer info + a link back to
+ * the original thread. (The customer is NOT contacted automatically.)
  *
  * See README.md (same folder) for setup instructions.
  *
@@ -28,20 +29,14 @@ const CONFIG = {
   /** Where the report lives. */
   SHARE_URL_BASE: 'https://sambww.github.io/waterwell/',
 
-  /** Signature block appended to draft replies. */
-  SIGNATURE: [
-    '',
-    'Sam Ballard',
-    'Ballard Water Well Company',
-    '(832) 479-3557  ·  info@texaswaterwell.com',
-    'texaswaterwell.com',
-  ].join('\n'),
-
   /** Restrict geocoding to Texas to avoid junk matches. */
   GEOCODE_REGION: 'us',
   GEOCODE_BOUNDS: { sw: { lat: 25.0, lng: -107.0 }, ne: { lat: 37.0, lng: -93.0 } },
 
-  /** Set to true to log what would happen without creating drafts. */
+  /** When a matching email is parsed, send a notification here with the URL. */
+  NOTIFY_EMAIL: 'sam@texaswaterwell.com',
+
+  /** Set to true to log what would happen without sending any notification. */
   DRY_RUN: false,
 };
 
@@ -77,30 +72,65 @@ function handleThread_(thread, processed, needsReview) {
   const subject = msg.getSubject();
   const body = msg.getPlainBody();
 
-  const address = extractAddress_(subject, body);
-  if (!address) {
+  const extracted = extractAddress_(subject, body);
+  if (!extracted) {
     console.log(`No address found in "${subject}". Labeling for review.`);
     thread.addLabel(needsReview);
     return;
   }
 
-  const geo = geocodeInTexas_(address);
+  const geo = geocodeInTexas_(extracted.address);
   if (!geo) {
-    console.log(`Geocoding failed for "${address}". Labeling for review.`);
+    console.log(`Geocoding failed for "${extracted.address}". Labeling for review.`);
     thread.addLabel(needsReview);
     return;
   }
 
   const url = buildShareUrl_(geo.formatted, geo.lat, geo.lng);
-  const draftBody = renderDraftBody_(geo.formatted, url);
+  const notif = buildNotification_(thread, extracted, geo, url);
 
   if (CONFIG.DRY_RUN) {
-    console.log(`[DRY RUN] Would draft reply with URL: ${url}`);
+    console.log(`[DRY RUN] Would email ${CONFIG.NOTIFY_EMAIL}:`);
+    console.log(`  Subject: ${notif.subject}`);
+    console.log(notif.body);
   } else {
-    thread.createDraftReply(draftBody);
+    GmailApp.sendEmail(CONFIG.NOTIFY_EMAIL, notif.subject, notif.body);
+    console.log(`Notified ${CONFIG.NOTIFY_EMAIL}: ${notif.subject}`);
   }
   thread.addLabel(processed);
-  console.log(`Processed: ${subject} -> ${url}`);
+}
+
+function buildNotification_(thread, extracted, geo, url) {
+  const fullName = extracted.customerFullName || '(see original email)';
+  const subjectName = extracted.customerFullName || 'New lead';
+  const shortLocation = shortAddr_(geo.formatted);
+  const threadUrl = `https://mail.google.com/mail/u/0/#inbox/${thread.getId()}`;
+  const confidenceNote = extracted.confident
+    ? ''
+    : '\n[!] Address was parsed via fuzzy fallback — double-check before sending.\n';
+
+  return {
+    subject: `Waterwell URL ready: ${subjectName} — ${shortLocation}`,
+    body: [
+      `Customer: ${fullName}`,
+      `Address:  ${geo.formatted}`,
+      confidenceNote.trim(),
+      '',
+      'Waterwell report:',
+      url,
+      '',
+      'Original Workiz email:',
+      threadUrl,
+    ].filter(line => line !== '').join('\n'),
+  };
+}
+
+function shortAddr_(formatted) {
+  // "239 Triple Creek Loop, Livingston, TX 77351, USA" → "Livingston, TX"
+  const parts = formatted.split(',').map(s => s.trim());
+  if (parts.length >= 3) return parts[1] + ', ' + parts[2].split(' ')[0];
+  if (parts.length === 2) return parts[1];
+  return formatted;
 }
 
 // ----------------------------------------------------------------------------
@@ -113,19 +143,28 @@ function handleThread_(thread, processed, needsReview) {
  *   2. The subject line itself (if it looks like an address)
  *   3. Any line in the body that looks like a US street + city + TX
  */
+/**
+ * Returns { address, confident, customerFirstName } or null if no address.
+ *   confident: true only for the high-confidence Workiz pattern; controls
+ *              whether the notification flags the parse for manual review.
+ *   customerFirstName: e.g. "Lenore" — used for the email greeting; may be null.
+ */
 function extractAddress_(subject, body) {
   // Collapse whitespace so the regex works across line wraps and the HTML-to-text
-  // conversion that Gmail does (which can sprinkle line breaks anywhere).
+  // conversion Gmail does (which can sprinkle line breaks anywhere).
   const flat = body.replace(/\s+/g, ' ');
 
   // 1. Workiz-style "[Name] located at [ADDRESS] would like an estimate ..."
-  //    Captures everything between "located at " and " would like an estimate".
   const workizMatch = flat.match(
-    /\blocated at\s+(.+?)\s+would like an estimate/i
+    /\b([A-Za-z][A-Za-z .'\-]{1,60}?)\s+located at\s+(.+?)\s+would like an estimate/i
   );
   if (workizMatch) {
-    const candidate = cleanCandidate_(workizMatch[1]);
-    if (looksLikeAddress_(candidate)) return candidate;
+    const candidate = cleanCandidate_(workizMatch[2]);
+    if (looksLikeAddress_(candidate)) {
+      const customerFirstName = firstNameFrom_(workizMatch[1]);
+      const customerFullName = titleCase_(workizMatch[1].trim());
+      return { address: candidate, confident: true, customerFirstName, customerFullName };
+    }
   }
 
   // 2. "Service Address:" / "Property Address:" / "Address:" labeled line
@@ -137,28 +176,49 @@ function extractAddress_(subject, body) {
     const m = body.match(pattern);
     if (m) {
       const candidate = cleanCandidate_(m[1]);
-      if (looksLikeAddress_(candidate)) return candidate;
+      if (looksLikeAddress_(candidate)) {
+        return { address: candidate, confident: false, customerFirstName: null, customerFullName: null };
+      }
     }
   }
 
   // 3. Subject sometimes has the address tacked on
   const subjectCandidate = cleanCandidate_(stripSubjectPrefix_(subject));
-  if (looksLikeAddress_(subjectCandidate)) return subjectCandidate;
+  if (looksLikeAddress_(subjectCandidate)) {
+    return { address: subjectCandidate, confident: false, customerFirstName: null };
+  }
 
   // 4. Any body line that looks like a US street address
   const lines = body.split(/\r?\n/);
   for (const raw of lines) {
     const candidate = cleanCandidate_(raw);
-    if (looksLikeAddress_(candidate)) return candidate;
+    if (looksLikeAddress_(candidate)) {
+      return { address: candidate, confident: false, customerFirstName: null, customerFullName: null };
+    }
   }
 
   // 5. Two-line addresses ("123 Main St\nCity, TX 12345")
   for (let i = 0; i < lines.length - 1; i++) {
     const combined = cleanCandidate_(lines[i] + ', ' + lines[i + 1]);
-    if (looksLikeAddress_(combined)) return combined;
+    if (looksLikeAddress_(combined)) {
+      return { address: combined, confident: false, customerFirstName: null, customerFullName: null };
+    }
   }
 
   return null;
+}
+
+function firstNameFrom_(rawName) {
+  if (!rawName) return null;
+  const titled = titleCase_(rawName);
+  const first = titled.trim().split(/\s+/)[0] || '';
+  // Reject anything that doesn't look like a real name (numbers, etc.)
+  return /^[A-Z][A-Za-z'\-]{1,30}$/.test(first) ? first : null;
+}
+
+function titleCase_(s) {
+  if (!s) return '';
+  return s.toLowerCase().replace(/(?:^|[\s\-'])\S/g, c => c.toUpperCase());
 }
 
 function stripSubjectPrefix_(subject) {
@@ -232,18 +292,6 @@ function buildShareUrl_(address, lat, lng) {
   return CONFIG.SHARE_URL_BASE + '?' + params;
 }
 
-function renderDraftBody_(address, url) {
-  return [
-    'Hi,',
-    '',
-    `Thanks for reaching out about ${address}. Here's a preliminary water-well depth analysis based on the 10 closest registered wells in the Texas Water Development Board database:`,
-    '',
-    url,
-    '',
-    'This gives a recommended target depth based on what\'s been drilled near you. Final pricing depends on a site visit — call (832) 479-3557 or reply to this email and we\'ll get on the calendar.',
-    CONFIG.SIGNATURE,
-  ].join('\n');
-}
 
 // ----------------------------------------------------------------------------
 // Labels
@@ -301,18 +349,24 @@ function testParse() {
     '50gpm - 5Hp - Large Estate & Irrigation (15 heads/zone)',
   ].join('\n');
 
-  const address = extractAddress_(SAMPLE_SUBJECT, SAMPLE_BODY);
-  console.log('Extracted address:', address);
-  if (!address) return;
+  const extracted = extractAddress_(SAMPLE_SUBJECT, SAMPLE_BODY);
+  console.log('Extracted:', JSON.stringify(extracted));
+  if (!extracted) return;
 
-  const geo = geocodeInTexas_(address);
+  const geo = geocodeInTexas_(extracted.address);
   console.log('Geocoded:', JSON.stringify(geo));
   if (!geo) return;
 
   const url = buildShareUrl_(geo.formatted, geo.lat, geo.lng);
-  console.log('URL:', url);
-  console.log('--- Draft body ---');
-  console.log(renderDraftBody_(geo.formatted, url));
+  // testParse doesn't have a real thread, so fake a thread-like object for the
+  // notification preview.
+  const fakeThread = { getId: () => 'FAKE_THREAD_ID' };
+  const notif = buildNotification_(fakeThread, extracted, geo, url);
+  console.log('--- Notification email ---');
+  console.log(`To:      ${CONFIG.NOTIFY_EMAIL}`);
+  console.log(`Subject: ${notif.subject}`);
+  console.log('Body:');
+  console.log(notif.body);
 }
 
 /**
