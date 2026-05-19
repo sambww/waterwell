@@ -427,15 +427,39 @@ footer.brand p { margin:0 0 4px; font-size:14px; color:#444; }
     }
 
     // ----------- Recommendation logic ----------------------------------------
+    // Find clusters of 3+ wells where all members fall within a 50-ft band.
+    // For each cluster, the recommended drill depth is the deepest well in
+    // that cluster. Returns clusters sorted deepest-first.
     function recommend(wells) {
-      const depths = wells.map(x => x.w[3]).slice().sort((a, b) => b - a);
-      const recommended = depths[0];
-      const cluster = depths.filter(d => recommended - d <= 10).length;
-      let alternative = null;
-      for (const d of depths.slice(1)) {
-        if (recommended - d >= 20) { alternative = d; break; }
+      const depths = wells.map(x => x.w[3]).slice().sort((a, b) => a - b);
+      const clusters = [];
+      let i = 0;
+      while (i < depths.length) {
+        let end = i;
+        while (end + 1 < depths.length && depths[end + 1] - depths[i] <= 50) end++;
+        const count = end - i + 1;
+        if (count >= 3) {
+          clusters.push({ min: depths[i], max: depths[end], count });
+          i = end + 1;
+        } else {
+          i++;
+        }
       }
-      return { recommended, cluster, alternative };
+      clusters.sort((a, b) => b.max - a.max);
+
+      if (clusters.length === 0) {
+        const deepest = depths[depths.length - 1];
+        return {
+          mode: 'deepest',
+          primary: { depth: deepest, count: 1, min: deepest, max: deepest },
+          alternatives: [],
+        };
+      }
+      return {
+        mode: 'cluster',
+        primary: { depth: clusters[0].max, count: clusters[0].count, min: clusters[0].min, max: clusters[0].max },
+        alternatives: clusters.slice(1).map(c => ({ depth: c.max, count: c.count, min: c.min, max: c.max })),
+      };
     }
 
     // ----------- Render -------------------------------------------------------
@@ -447,7 +471,6 @@ footer.brand p { margin:0 0 4px; font-size:14px; color:#444; }
       const minDepth = Math.min(...wells.map(x => x.w[3]));
       const maxDepth = Math.max(...wells.map(x => x.w[3]));
       const maxDist = Math.max(...wells.map(x => x.d));
-      const recFt = Math.round(rec.recommended);
 
       // Headers
       document.getElementById('r-address').textContent = placeLabel;
@@ -458,32 +481,47 @@ footer.brand p { margin:0 0 4px; font-size:14px; color:#444; }
       document.getElementById('r-mailto').href =
         `mailto:info@texaswaterwell.com?subject=${encodeURIComponent('Estimate request for ' + placeLabel)}`;
 
-      // Summary cards
-      const altCard = rec.alternative !== null
-        ? `<div class="stat secondary"><div class="label">Alternative Depth</div><div class="value">${Math.round(rec.alternative)} ft<small>next-deepest distinct</small></div></div>`
-        : '';
-      const clusterNote = rec.cluster > 1 ? ` (${rec.cluster} wells within 10 ft)` : '';
-      document.getElementById('r-summary').innerHTML = `
-        <div class="stat primary"><div class="label">Recommended Depth</div><div class="value">${recFt} ft<small>${clusterNote}</small></div></div>
-        ${altCard}
-        <div class="stat"><div class="label">Depth Range Observed</div><div class="value">${Math.round(minDepth)}–${Math.round(maxDepth)} ft<small>across ${wells.length} wells</small></div></div>
-      `;
+      // Summary cards: primary recommendation + each alternative cluster + range
+      const fmtBand = (c) => `${c.count} well${c.count !== 1 ? 's' : ''} in ${Math.round(c.min)}–${Math.round(c.max)} ft`;
+      const primaryLabel = rec.mode === 'cluster' ? 'Recommended Depth' : 'Recommended Depth';
+      const primarySub = rec.mode === 'cluster' ? fmtBand(rec.primary) : 'deepest of 10 (no cluster of 3+)';
+      let summary = `<div class="stat primary"><div class="label">${primaryLabel}</div><div class="value">${Math.round(rec.primary.depth)} ft<small>${primarySub}</small></div></div>`;
+      rec.alternatives.forEach((alt, idx) => {
+        const lbl = rec.alternatives.length > 1 ? `Alternative #${idx + 1}` : 'Alternative Depth';
+        summary += `<div class="stat secondary"><div class="label">${lbl}</div><div class="value">${Math.round(alt.depth)} ft<small>${fmtBand(alt)}</small></div></div>`;
+      });
+      summary += `<div class="stat"><div class="label">Depth Range Observed</div><div class="value">${Math.round(minDepth)}–${Math.round(maxDepth)} ft<small>across ${wells.length} wells</small></div></div>`;
+      document.getElementById('r-summary').innerHTML = summary;
 
       // Rationale
-      const rationaleBits = [`The deepest of the 10 nearest wells reaches <b>${recFt} ft</b>.`];
-      if (rec.cluster > 1) rationaleBits.push(`${rec.cluster} of the 10 are within 10 ft of that depth — high confidence.`);
-      if (rec.alternative !== null) rationaleBits.push(`If you want a shallower option, the next distinct depth is ${Math.round(rec.alternative)} ft.`);
+      let rationaleBits;
+      if (rec.mode === 'cluster') {
+        rationaleBits = [
+          `The strongest cluster of nearby wells: <b>${rec.primary.count} wells drilled between ${Math.round(rec.primary.min)} and ${Math.round(rec.primary.max)} ft</b> — recommended depth <b>${Math.round(rec.primary.depth)} ft</b>.`
+        ];
+        if (rec.alternatives.length > 0) {
+          const parts = rec.alternatives.map(a => `${a.count} wells at ${Math.round(a.min)}–${Math.round(a.max)} ft (alt. ${Math.round(a.depth)} ft)`);
+          rationaleBits.push(`Other clusters: ${parts.join('; ')}.`);
+        }
+      } else {
+        rationaleBits = [
+          `The 10 nearest wells are too scattered to form a depth cluster (no 3+ wells within 50 ft of each other). Recommending the deepest at <b>${Math.round(rec.primary.depth)} ft</b>.`
+        ];
+      }
       document.getElementById('r-rationale').innerHTML = rationaleBits.join(' ');
 
-      // Table rows
+      // Table rows — highlight wells that fall inside the primary cluster.
+      const pMin = rec.primary.min, pMax = rec.primary.max;
       const rows = wells.map((x, i) => {
         const w = x.w;
-        const isRec = Math.abs(w[3] - rec.recommended) < 0.01;
+        const inCluster = w[3] >= pMin && w[3] <= pMax;
+        const isExactRec = Math.abs(w[3] - rec.primary.depth) < 0.01;
         const ownerAddr = [w[5], w[6]].filter(Boolean).map(escapeHtml).join(' · ') || '—';
         const url = TWDB_URL(w[0]);
-        return `<tr${isRec ? ' class="recommended"' : ''}>
+        const pill = isExactRec ? ' <span class="pill">recommended</span>' : '';
+        return `<tr${inCluster ? ' class="recommended"' : ''}>
           <td>${i + 1}</td>
-          <td>${Math.round(w[3])} ft${isRec ? ' <span class="pill">recommended</span>' : ''}</td>
+          <td>${Math.round(w[3])} ft${pill}</td>
           <td>${x.d.toFixed(2)}</td>
           <td>${ownerAddr}</td>
           <td>${escapeHtml(w[4] || '—')}</td>
@@ -510,15 +548,15 @@ footer.brand p { margin:0 0 4px; font-size:14px; color:#444; }
       const bounds = [[lat, lon]];
       wells.forEach((x, i) => {
         const w = x.w;
-        const isRec = Math.abs(w[3] - rec.recommended) < 0.01;
-        const color = isRec ? '#4a8a3a' : '#1e88e5';
+        const inCluster = w[3] >= pMin && w[3] <= pMax;
+        const color = inCluster ? '#4a8a3a' : '#1e88e5';
         const icon = L.divIcon({
           className: 'well-icon',
           html: `<div style="background:${color};color:#fff;border:2px solid #fff;border-radius:50%;width:26px;height:26px;line-height:22px;text-align:center;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,.3);">${i + 1}</div>`,
           iconSize:[26,26], iconAnchor:[13,13]
         });
         L.marker([w[1], w[2]], {icon}).addTo(map).bindPopup(
-          `<b>Well #${i + 1}${isRec ? ' · recommended' : ''}</b><br>` +
+          `<b>Well #${i + 1}${inCluster ? ' · in recommended cluster' : ''}</b><br>` +
           `Depth: <b>${Math.round(w[3])} ft</b><br>` +
           `Distance: ${x.d.toFixed(2)} mi<br>` +
           (w[5] ? `${escapeHtml(w[5])}<br>` : '') +

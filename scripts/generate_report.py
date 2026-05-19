@@ -104,28 +104,43 @@ def nearest_wells(lat, lon, k=10):
 
 
 def recommend_depth(wells):
-    """Pick a recommended depth and (optionally) an alternative.
+    """Cluster the 10 nearest wells into 50-ft depth bands; each cluster of 3+
+    wells produces a recommended drill depth (= the deepest well in that
+    cluster). Returns clusters deepest-first.
 
-    Recommended = deepest well of the ten.
-    Alternative = the next deepest *meaningfully different* depth (>=20 ft
-    shallower than recommended), if one exists. If two or more wells cluster
-    at or near the recommended depth, mention how many for confidence.
+    Falls back to "deepest single well" if no 3+ cluster exists.
     """
-    depths = [(float(r["depth_ft"]), r) for _, r in wells]
-    depths.sort(key=lambda x: -x[0])
-    recommended_depth, _ = depths[0]
-    cluster_at_top = sum(1 for d, _ in depths if recommended_depth - d <= 10)
+    depths = sorted(float(r["depth_ft"]) for _, r in wells)
 
-    alternative = None
-    for d, _ in depths[1:]:
-        if recommended_depth - d >= 20:
-            alternative = d
-            break
+    clusters = []  # list of dicts: {min, max, count}
+    i = 0
+    while i < len(depths):
+        end = i
+        while end + 1 < len(depths) and depths[end + 1] - depths[i] <= 50:
+            end += 1
+        count = end - i + 1
+        if count >= 3:
+            clusters.append({"min": depths[i], "max": depths[end], "count": count})
+            i = end + 1
+        else:
+            i += 1
+    clusters.sort(key=lambda c: -c["max"])
 
+    if not clusters:
+        deepest = depths[-1]
+        return {
+            "mode": "deepest",
+            "primary": {"depth": deepest, "count": 1, "min": deepest, "max": deepest},
+            "alternatives": [],
+        }
+    primary = clusters[0]
     return {
-        "recommended_ft": recommended_depth,
-        "cluster_at_top": cluster_at_top,
-        "alternative_ft": alternative,
+        "mode": "cluster",
+        "primary": {"depth": primary["max"], "count": primary["count"], "min": primary["min"], "max": primary["max"]},
+        "alternatives": [
+            {"depth": c["max"], "count": c["count"], "min": c["min"], "max": c["max"]}
+            for c in clusters[1:]
+        ],
     }
 
 
@@ -310,15 +325,7 @@ PAGE_TEMPLATE = """<!doctype html>
 
   <div class="wrap">
     <section class="summary">
-      <div class="stat primary">
-        <div class="label">Recommended Depth</div>
-        <div class="value">{rec_ft} ft<small>{rec_meta}</small></div>
-      </div>
-      {alt_block}
-      <div class="stat">
-        <div class="label">Depth Range Observed</div>
-        <div class="value">{min_ft}&ndash;{max_ft} ft<small>across {n_wells} wells</small></div>
-      </div>
+      {summary_cards}
     </section>
 
     <div class="rationale">{rationale}</div>
@@ -396,7 +403,7 @@ PAGE_TEMPLATE = """<!doctype html>
 
     const bounds = [[data.center.lat, data.center.lon]];
     data.wells.forEach((w, i) => {{
-      const color = w.is_recommended ? '#4a8a3a' : '#1e88e5';
+      const color = w.in_cluster ? '#4a8a3a' : '#1e88e5';
       const icon = L.divIcon({{
         className: 'well-icon',
         html: `<div style="background:${{color}};color:#fff;border:2px solid #fff;border-radius:50%;width:26px;height:26px;line-height:22px;text-align:center;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,.3);">${{i+1}}</div>`,
@@ -405,7 +412,7 @@ PAGE_TEMPLATE = """<!doctype html>
       L.marker([w.lat, w.lon], {{icon}})
         .addTo(map)
         .bindPopup(
-          `<b>Well #${{i+1}}${{w.is_recommended ? ' &middot; recommended' : ''}}</b><br>` +
+          `<b>Well #${{i+1}}${{w.in_cluster ? ' &middot; in recommended cluster' : ''}}</b><br>` +
           `Depth: <b>${{w.depth_ft}} ft</b><br>` +
           `Distance: ${{w.distance_mi}} mi<br>` +
           (w.owner ? `${{w.owner}}<br>` : '') +
@@ -422,38 +429,65 @@ PAGE_TEMPLATE = """<!doctype html>
 
 
 def render(address, formatted_address, center_lat, center_lon, wells, rec):
-    rec_ft = int(round(rec["recommended_ft"]))
-    rec_meta = ""
-    if rec["cluster_at_top"] > 1:
-        rec_meta = f"({rec['cluster_at_top']} wells within 10 ft)"
-
-    if rec["alternative_ft"] is not None:
-        alt_block = (
-            '<div class="stat secondary">'
-            '<div class="label">Alternative Depth</div>'
-            f'<div class="value">{int(round(rec["alternative_ft"]))} ft'
-            '<small>next-deepest distinct</small></div>'
-            '</div>'
-        )
-    else:
-        alt_block = ""
-
     max_dist = max(d for d, _ in wells)
     all_depths = [float(r["depth_ft"]) for _, r in wells]
     min_ft = int(round(min(all_depths)))
     max_ft = int(round(max(all_depths)))
-    rationale_bits = [
-        f"The deepest of the 10 nearest wells reaches <b>{rec_ft} ft</b>."
+
+    primary = rec["primary"]
+    p_min, p_max = primary["min"], primary["max"]
+
+    def fmt_band(c):
+        well_word = "well" if c["count"] == 1 else "wells"
+        return f"{c['count']} {well_word} in {int(round(c['min']))}–{int(round(c['max']))} ft"
+
+    primary_sub = (
+        fmt_band(primary) if rec["mode"] == "cluster"
+        else "deepest of 10 (no cluster of 3+)"
+    )
+    cards = [
+        '<div class="stat primary">'
+        '<div class="label">Recommended Depth</div>'
+        f'<div class="value">{int(round(primary["depth"]))} ft'
+        f'<small>{primary_sub}</small></div>'
+        '</div>'
     ]
-    if rec["cluster_at_top"] > 1:
-        rationale_bits.append(
-            f"{rec['cluster_at_top']} of the 10 are within 10 ft of that depth — high confidence."
+    for idx, alt in enumerate(rec["alternatives"]):
+        label = f"Alternative #{idx + 1}" if len(rec["alternatives"]) > 1 else "Alternative Depth"
+        cards.append(
+            '<div class="stat secondary">'
+            f'<div class="label">{label}</div>'
+            f'<div class="value">{int(round(alt["depth"]))} ft'
+            f'<small>{fmt_band(alt)}</small></div>'
+            '</div>'
         )
-    if rec["alternative_ft"] is not None:
-        rationale_bits.append(
-            f"If you want a shallower option, the next distinct depth is "
-            f"{int(round(rec['alternative_ft']))} ft."
-        )
+    cards.append(
+        '<div class="stat">'
+        '<div class="label">Depth Range Observed</div>'
+        f'<div class="value">{min_ft}&ndash;{max_ft} ft'
+        f'<small>across {len(wells)} wells</small></div>'
+        '</div>'
+    )
+    summary_cards = "\n      ".join(cards)
+
+    if rec["mode"] == "cluster":
+        rationale_bits = [
+            f"The strongest cluster of nearby wells: "
+            f"<b>{primary['count']} wells drilled between {int(round(p_min))} and {int(round(p_max))} ft</b>"
+            f" &mdash; recommended depth <b>{int(round(primary['depth']))} ft</b>."
+        ]
+        if rec["alternatives"]:
+            parts = [
+                f"{a['count']} wells at {int(round(a['min']))}–{int(round(a['max']))} ft"
+                f" (alt. {int(round(a['depth']))} ft)"
+                for a in rec["alternatives"]
+            ]
+            rationale_bits.append("Other clusters: " + "; ".join(parts) + ".")
+    else:
+        rationale_bits = [
+            f"The 10 nearest wells are too scattered to form a depth cluster (no 3+ wells within 50 ft of each other). "
+            f"Recommending the deepest at <b>{int(round(primary['depth']))} ft</b>."
+        ]
     rationale = " ".join(rationale_bits)
 
     rows = []
@@ -461,17 +495,18 @@ def render(address, formatted_address, center_lat, center_lon, wells, rec):
     for i, (dist, row) in enumerate(wells, start=1):
         tn = row["tracking_number"]
         depth = float(row["depth_ft"])
-        is_rec = abs(depth - rec["recommended_ft"]) < 0.01
+        in_cluster = p_min <= depth <= p_max
+        is_exact_rec = abs(depth - primary["depth"]) < 0.01
         report_url = TWDB_REPORT_URL.format(tn=urllib.parse.quote(tn))
         owner_addr = " &middot; ".join(
             html_lib.escape(x) for x in [row["owner"], row["address"]] if x
         ) or "&mdash;"
-        rec_pill = '<span class="pill">recommended</span>' if is_rec else ""
+        rec_pill = '<span class="pill">recommended</span>' if is_exact_rec else ""
         rows.append(
             "<tr{cls}><td>{i}</td><td>{depth} ft{pill}</td><td>{dist}</td>"
             "<td>{owner_addr}</td><td>{county}</td><td>{drill}</td>"
             "<td><a href='{url}' target='_blank' rel='noopener'>open log &raquo;</a></td></tr>".format(
-                cls=" class='recommended'" if is_rec else "",
+                cls=" class='recommended'" if in_cluster else "",
                 i=i,
                 depth=f"{depth:.0f}",
                 pill=rec_pill,
@@ -491,7 +526,7 @@ def render(address, formatted_address, center_lat, center_lon, wells, rec):
             "owner": row["owner"],
             "address": row["address"],
             "report_url": report_url,
-            "is_recommended": is_rec,
+            "in_cluster": in_cluster,
         })
 
     data_for_js = {
@@ -520,13 +555,9 @@ def render(address, formatted_address, center_lat, center_lon, wells, rec):
         address_html=html_lib.escape(formatted_address),
         address_url=urllib.parse.quote(formatted_address),
         generated_at=datetime.now().strftime("%B %-d, %Y"),
-        rec_ft=rec_ft,
-        rec_meta=(" " + rec_meta) if rec_meta else "",
-        alt_block=alt_block,
+        summary_cards=summary_cards,
         n_wells=len(wells),
         max_dist=f"{max_dist:.1f}",
-        min_ft=min_ft,
-        max_ft=max_ft,
         rationale=rationale,
         rows_html="\n          ".join(rows),
         data_json=json.dumps(data_for_js),
