@@ -1,0 +1,15 @@
+id,name,phone,email,address,city,state,zip,source
+1,Samuel Ballard,512-555-1234,sam@ballardwater.com,123 Main St,Austin,TX,78701,QuickBooks
+2,Sam Ballard,(512) 555-1234,samuel.b@gmail.com,123 Main Street,Austin,TX,78701,Workiz
+3,S. Ballard,5125551234,,123 Main,Austin,TX,78701,Workiz Phone AI
+4,Jennifer Martinez,512-555-4321,jmartinez@email.com,456 Oak Ave,Round Rock,TX,78664,QuickBooks
+5,Jenny Martinez,512-555-4321,jenny.m@yahoo.com,456 Oak Avenue,Round Rock,TX,78664,Workiz
+6,Robert Johnson,830-555-9876,rjohnson@company.com,789 County Road 100,Liberty Hill,TX,78642,QuickBooks
+7,Bob Johnson,830-555-9876,,789 CR 100,Liberty Hill,TX,78642,Workiz
+8,William Smith,512-555-6789,will.smith@email.com,321 Elm Dr,Georgetown,TX,78626,QuickBooks
+9,Bill Smith,(512) 555-6789,wsmith@gmail.com,321 Elm Drive,Georgetown,TX,78626,Workiz Phone AI
+10,Mary Wilson,512-555-1111,mary@wilson.net,555 Pine Ln,Cedar Park,TX,78613,QuickBooks
+11,Patricia Brown,512-555-2222,pat.brown@email.com,888 Maple Ct,Leander,TX,78641,QuickBooks
+12,Pat Brown,512-555-2222,,888 Maple Court,Leander,TX,78641,Workiz
+13,John Anderson,737-555-3333,janderson@work.com,999 Birch Blvd,Pflugerville,TX,78660,QuickBooks
+14,Anderson Plumbing Co,737-555-3334,info@andersonplumb.com,1000 Business Park,Pflugerville,TX,78660,QuickBooks
