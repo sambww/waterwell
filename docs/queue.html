@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Job Queue &mdash; Ballard Water Well Company</title>
+  <style>
+    :root {
+      --navy:#1c3f6e; --navy-2:#2b568a;
+      --blue:#1e88e5;
+      --green:#4a8a3a; --green-dark:#3a6f2d; --green-soft:#ecf5e6;
+      --fg:#1c1c1e; --muted:#6b7280;
+      --bg:#f4f6f9; --card:#fff;
+      --border:#e4e7eb; --accent-soft:#e8f1fb;
+    }
+    * { box-sizing:border-box; }
+    html, body { margin:0; }
+    body {
+      font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+      color:var(--fg); background:var(--bg);
+    }
+    a { color:var(--blue); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+
+    .brandbar { background:#fff; border-bottom:1px solid var(--border); padding:14px 0; }
+    .brandbar .inner {
+      max-width:1100px; margin:0 auto; padding:0 24px;
+      display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+    }
+    .brandbar img { height:58px; width:auto; display:block; }
+    .brandbar .company { display:flex; flex-direction:column; }
+    .brandbar .name { font-weight:700; font-size:17px; color:var(--navy); }
+    .brandbar .tag { color:var(--muted); font-size:13px; }
+    .brandbar .nav { margin-left:auto; display:flex; align-items:center; gap:20px; flex-wrap:wrap; }
+    .brandbar .navlink {
+      color:var(--navy); font-weight:600; font-size:14px;
+      text-decoration:none; white-space:nowrap;
+    }
+    .brandbar .navlink:hover { color:var(--blue); text-decoration:none; }
+    .brandbar .navlink.active { color:var(--green-dark); }
+    .brandbar .phone {
+      color:var(--navy); font-weight:700; font-size:17px;
+      text-decoration:none; white-space:nowrap;
+    }
+    .brandbar .phone:hover { color:var(--blue); text-decoration:none; }
+
+    footer.brand { background:#fff; border-top:1px solid var(--border); margin-top:40px; }
+    footer.brand .inner {
+      max-width:1100px; margin:0 auto; padding:28px 24px;
+      display:grid; grid-template-columns:2fr 1fr 1fr; gap:28px;
+    }
+    @media (max-width:780px) { footer.brand .inner { grid-template-columns:1fr; } }
+    footer.brand h3 {
+      font-size:12px; text-transform:uppercase; letter-spacing:.06em;
+      color:var(--muted); margin:0 0 10px; font-weight:600;
+    }
+    footer.brand p { margin:0 0 4px; font-size:14px; color:#444; }
+
+    .hero {
+      background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+      color:#fff; padding:48px 24px 56px; text-align:center;
+    }
+    .hero h1 { margin:0 0 10px; font-size:32px; font-weight:600; line-height:1.2; }
+    .hero p.lead { margin:0 auto; max-width:680px; font-size:16px; opacity:.92; line-height:1.55; }
+    .hero .updated { margin-top:18px; font-size:13px; opacity:.85; }
+    .hero .updated b { font-weight:600; }
+
+    .wrap { max-width:1100px; margin:0 auto; padding:32px 24px 0; }
+
+    /* Kanban board */
+    .board {
+      display:grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap:16px;
+      margin-bottom:32px;
+    }
+    @media (max-width:980px) { .board { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width:640px) { .board { grid-template-columns: 1fr; } }
+
+    .rig {
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:14px;
+      overflow:hidden;
+      box-shadow:0 4px 16px rgba(28,63,110,.06);
+      display:flex; flex-direction:column;
+    }
+    .rig-head {
+      padding:16px 18px 14px;
+      background: linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+      color:#fff;
+    }
+    .rig-head .rig-name { font-size:20px; font-weight:700; letter-spacing:.01em; }
+    .rig-head .rig-sup { font-size:12px; text-transform:uppercase; letter-spacing:.08em; opacity:.85; margin-top:4px; }
+    .rig-body { padding:14px; display:flex; flex-direction:column; gap:10px; }
+
+    .job {
+      background:#fafbfc;
+      border:1px solid var(--border);
+      border-radius:10px;
+      padding:14px 16px;
+      display:flex; align-items:center; gap:14px;
+    }
+    .job.drilling {
+      background:var(--green-soft);
+      border-color:#cfe3c4;
+      box-shadow:inset 3px 0 0 var(--green);
+    }
+    .job .pos {
+      font-size:28px; font-weight:700; color:var(--navy);
+      min-width:42px; text-align:center; line-height:1;
+    }
+    .job.drilling .pos { color:var(--green-dark); }
+    .job .meta { flex:1; min-width:0; }
+    .job .label { font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); font-weight:600; }
+    .job .eta { font-size:14px; color:var(--fg); margin-top:2px; }
+    .job .badge {
+      display:inline-block; padding:3px 9px; border-radius:999px;
+      background:var(--green); color:#fff; font-size:10px; font-weight:700;
+      text-transform:uppercase; letter-spacing:.04em; margin-top:6px;
+    }
+    .job.empty {
+      background:#fff;
+      border-style:dashed;
+      color:var(--muted);
+      justify-content:center;
+      font-size:13px;
+      padding:18px;
+    }
+
+    .bench {
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:16px 20px;
+      margin-bottom:32px;
+      display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+    }
+    .bench .label { font-size:12px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); font-weight:600; }
+    .bench .names { color:var(--fg); font-weight:500; }
+
+    .explain {
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:18px 22px;
+      margin-bottom:32px;
+      color:#3a3a3a; line-height:1.6;
+    }
+    .explain b { color:var(--navy); }
+
+    .cta {
+      background: linear-gradient(135deg, var(--green) 0%, var(--green-dark) 100%);
+      color:#fff; padding:32px 28px; border-radius:14px; text-align:center;
+      margin-bottom:24px;
+    }
+    .cta h3 { margin:0 0 8px; font-size:22px; font-weight:600; }
+    .cta p { margin:0 auto 18px; opacity:.95; max-width:560px; }
+    .cta-buttons { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; }
+    .cta-btn {
+      background:#fff; color:var(--green-dark); padding:12px 22px;
+      border-radius:8px; font-weight:600; text-decoration:none; display:inline-block;
+      transition:transform .15s, box-shadow .15s;
+    }
+    .cta-btn:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,.15); text-decoration:none; }
+    .cta-btn.alt { background:rgba(255,255,255,.12); color:#fff; border:1px solid rgba(255,255,255,.35); }
+
+    .disclaimer {
+      max-width:1100px; margin:0 auto; padding:8px 24px 0;
+      color:var(--muted); font-size:12px; line-height:1.6;
+    }
+
+    .errorbox {
+      background:#fff; border:1px solid #e6c8c8; border-left:4px solid #b3261e;
+      border-radius:10px; padding:18px 22px; color:#5b1b14; margin-bottom:24px;
+    }
+    .errorbox b { color:#b3261e; }
+  </style>
+</head>
+<body>
+  <div class="brandbar">
+    <div class="inner">
+      <a href="https://www.texaswaterwell.com/" target="_blank" rel="noopener"><img src="logo.jpg" alt="Ballard Water Well Company"></a>
+      <div class="company">
+        <span class="name">Ballard Water Well Company</span>
+        <span class="tag">Your local water well experts &middot; Since 1979</span>
+      </div>
+      <div class="nav">
+        <a href="index.html" class="navlink">Depth lookup</a>
+        <a href="queue.html" class="navlink active">Job queue</a>
+        <a href="tel:8324793557" class="phone">(832) 479-3557</a>
+      </div>
+    </div>
+  </div>
+
+  <section class="hero">
+    <h1>Where's my well in the queue?</h1>
+    <p class="lead">Live drilling schedule for our four rigs. Find your position with the job number we gave you &mdash; the card at position #1 is what each rig is drilling right now.</p>
+    <div class="updated" id="updated"></div>
+  </section>
+
+  <div class="wrap">
+    <div id="error" class="errorbox" style="display:none;">
+      <b>Queue temporarily unavailable.</b> We&rsquo;ll be back shortly &mdash; in the meantime please call
+      <a href="tel:8324793557">(832) 479-3557</a> and we&rsquo;ll look up your position for you.
+    </div>
+
+    <div id="board" class="board"></div>
+
+    <div id="bench" class="bench" style="display:none;">
+      <span class="label">Available crew</span>
+      <span class="names" id="bench-names"></span>
+    </div>
+
+    <div class="explain">
+      <b>How to read this board.</b> Each column is one of our four drilling rigs, named for the rig itself
+      (Bertha, Optimus, Poseidon, Megatron). The supervisor running that rig is shown below the name.
+      Position <b>#1</b> is the job each rig is drilling today; <b>#2</b> is next up, and so on. Estimated start weeks are based on the current schedule and can shift if a well takes longer than expected or weather pushes us back.
+    </div>
+
+    <section class="cta">
+      <h3>Don&rsquo;t see your job?</h3>
+      <p>If you don&rsquo;t have a job number yet, or you&rsquo;d like to confirm where you are in the queue, give us a call or send a quick email.</p>
+      <div class="cta-buttons">
+        <a href="tel:8324793557" class="cta-btn">Call (832) 479-3557</a>
+        <a href="mailto:info@texaswaterwell.com" class="cta-btn alt">Email info@texaswaterwell.com</a>
+        <a href="https://www.texaswaterwell.com/" class="cta-btn alt" target="_blank" rel="noopener">Visit our website</a>
+      </div>
+    </section>
+
+    <div class="disclaimer">
+      Schedule reflects our best estimate based on current crew assignments and average drilling times in
+      the area. Actual start dates depend on weather, soil conditions, permit timing, and the depth of the
+      well ahead of yours. We do our best to keep this board within a day of the live Workiz schedule.
+    </div>
+  </div>
+
+  <footer class="brand">
+    <div class="inner">
+      <div>
+        <h3>Ballard Water Well Company LLC</h3>
+        <p>Premier water well drilling, pump installation, and water treatment in Willis, TX and the Greater Houston area.</p>
+        <p style="margin-top:10px;">Licensed TDLR Master Driller &amp; Pump Installer</p>
+      </div>
+      <div>
+        <h3>Contact</h3>
+        <p><a href="tel:8324793557">(832) 479-3557</a></p>
+        <p><a href="mailto:info@texaswaterwell.com">info@texaswaterwell.com</a></p>
+        <p><a href="https://www.texaswaterwell.com/" target="_blank" rel="noopener">texaswaterwell.com</a></p>
+      </div>
+      <div>
+        <h3>Service Area</h3>
+        <p>100-mile service radius from Willis, Texas &mdash; including Houston, Conroe, The Woodlands, Magnolia, Tomball, Spring, Cypress, Katy, and surrounding areas.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    function escapeHtml(s) {
+      return (s || '').replace(/[&<>"']/g, c => ({
+        '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+      }[c]));
+    }
+
+    function formatUpdated(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleString('en-US', {
+        weekday: 'short', month: 'short', day: 'numeric',
+        hour: 'numeric', minute: '2-digit', timeZoneName: 'short'
+      });
+    }
+
+    function renderJob(job) {
+      const drilling = job.status === 'drilling';
+      const badge = drilling ? '<div class="badge">Drilling now</div>' : '';
+      const label = drilling ? 'Current job' : 'Upcoming';
+      return `
+        <div class="job${drilling ? ' drilling' : ''}">
+          <div class="pos">#${job.position}</div>
+          <div class="meta">
+            <div class="label">${label}</div>
+            <div class="eta">${escapeHtml(job.etaWeek || '—')}</div>
+            ${badge}
+          </div>
+        </div>`;
+    }
+
+    function renderEmpty() {
+      return '<div class="job empty">No jobs scheduled</div>';
+    }
+
+    function renderRig(rig, jobs) {
+      const sup = (rig.supervisors && rig.supervisors.length)
+        ? `Crew: ${rig.supervisors.map(escapeHtml).join(' &amp; ')}`
+        : 'Crew: unassigned';
+      const body = (jobs && jobs.length)
+        ? jobs.map(renderJob).join('')
+        : renderEmpty();
+      return `
+        <div class="rig">
+          <div class="rig-head">
+            <div class="rig-name">${escapeHtml(rig.name)}</div>
+            <div class="rig-sup">${sup}</div>
+          </div>
+          <div class="rig-body">${body}</div>
+        </div>`;
+    }
+
+    function render(config, data) {
+      const updatedEl = document.getElementById('updated');
+      const updated = formatUpdated(data && data.lastUpdated);
+      updatedEl.innerHTML = updated ? `Updated <b>${escapeHtml(updated)}</b>` : '';
+
+      const board = document.getElementById('board');
+      const jobsByRig = (data && data.rigs) || {};
+      board.innerHTML = config.rigs.map(rig => renderRig(rig, jobsByRig[rig.name])).join('');
+
+      const bench = config.bench || [];
+      if (bench.length) {
+        document.getElementById('bench-names').textContent = bench.join(', ');
+        document.getElementById('bench').style.display = '';
+      }
+    }
+
+    function showError() {
+      document.getElementById('error').style.display = '';
+    }
+
+    async function load() {
+      try {
+        const [configResp, dataResp] = await Promise.all([
+          fetch('data/rigs.json',  { cache: 'no-store' }),
+          fetch('data/queue.json', { cache: 'no-store' }),
+        ]);
+        if (!configResp.ok) throw new Error('rigs.json missing');
+        const config = await configResp.json();
+        const data = dataResp.ok ? await dataResp.json() : { rigs: {} };
+        render(config, data);
+      } catch (e) {
+        console.error('Failed to load queue:', e);
+        showError();
+      }
+    }
+    load();
+  </script>
+</body>
+</html>

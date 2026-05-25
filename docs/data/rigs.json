@@ -1,0 +1,9 @@
+{
+  "rigs": [
+    { "name": "Bertha",   "supervisors": ["Kenneth"], "workizMatch": ["Kenneth", "Bertha"] },
+    { "name": "Optimus",  "supervisors": ["John"],    "workizMatch": ["John", "Optimus"] },
+    { "name": "Poseidon", "supervisors": ["Zach"],    "workizMatch": ["Zach", "Poseidon"] },
+    { "name": "Megatron", "supervisors": ["Trey"],    "workizMatch": ["Trey", "Megatron"] }
+  ],
+  "bench": ["Rope"]
+}
