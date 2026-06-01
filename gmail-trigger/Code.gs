@@ -104,25 +104,152 @@ function buildNotification_(thread, extracted, geo, url) {
   const fullName = extracted.customerFullName || '(see original email)';
   const subjectName = extracted.customerFullName || 'New lead';
   const shortLocation = shortAddr_(geo.formatted);
-  const threadUrl = `https://mail.google.com/mail/u/0/#inbox/${thread.getId()}`;
   const confidenceNote = extracted.confident
     ? ''
-    : '\n[!] Address was parsed via fuzzy fallback — double-check before sending.\n';
+    : '[!] Address was parsed via fuzzy fallback — double-check before using.';
+
+  // Compute the same recommendation as the website by hitting the public tile
+  // data and running the clustering algorithm here.
+  let analysisLines = [];
+  try {
+    const analysis = buildAnalysis_(geo.lat, geo.lng);
+    if (analysis) analysisLines = formatAnalysis_(analysis);
+  } catch (e) {
+    console.warn('Analysis build failed:', e);
+  }
+
+  const lines = [
+    `Customer: ${fullName}`,
+    `Address:  ${geo.formatted}`,
+  ];
+  if (confidenceNote) lines.push(confidenceNote);
+  if (analysisLines.length) {
+    lines.push('');
+    lines.push.apply(lines, analysisLines);
+  }
+  lines.push('');
+  lines.push('Full report:');
+  lines.push(url);
 
   return {
     subject: `Waterwell URL ready: ${subjectName} — ${shortLocation}`,
-    body: [
-      `Customer: ${fullName}`,
-      `Address:  ${geo.formatted}`,
-      confidenceNote.trim(),
-      '',
-      'Waterwell report:',
-      url,
-      '',
-      'Original Workiz email:',
-      threadUrl,
-    ].filter(line => line !== '').join('\n'),
+    body: lines.join('\n'),
   };
+}
+
+// ----------------------------------------------------------------------------
+// Well-depth analysis (same algorithm as the website)
+// ----------------------------------------------------------------------------
+
+const TILE_SIZE = 0.25;
+const TILES_BASE_URL = 'https://sambww.github.io/waterwell/data';
+
+function buildAnalysis_(lat, lng) {
+  const wells = fetchNearestWells_(lat, lng, 10);
+  if (!wells || wells.length === 0) return null;
+  return { wells, rec: recommendClusters_(wells) };
+}
+
+function fetchNearestWells_(lat, lng, k) {
+  // Expand the tile-grid radius until we have enough candidates.
+  for (let radius = 1; radius <= 4; radius++) {
+    const tlat = Math.floor(lat / TILE_SIZE);
+    const tlon = Math.floor(lng / TILE_SIZE);
+    const candidates = [];
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const tileId = `${tlat + dy}_${tlon + dx}`;
+        try {
+          const resp = UrlFetchApp.fetch(
+            `${TILES_BASE_URL}/${tileId}.json`,
+            { muteHttpExceptions: true }
+          );
+          if (resp.getResponseCode() !== 200) continue;
+          const tile = JSON.parse(resp.getContentText());
+          tile.forEach((w) => {
+            candidates.push({ w: w, d: haversineMi_(lat, lng, w[1], w[2]) });
+          });
+        } catch (e) { /* tile missing, skip */ }
+      }
+    }
+    if (candidates.length >= k * 3 || radius === 4) {
+      candidates.sort((a, b) => a.d - b.d);
+      return candidates.slice(0, k);
+    }
+  }
+  return [];
+}
+
+function haversineMi_(lat1, lon1, lat2, lon2) {
+  const R = 3958.7613;
+  const p1 = lat1 * Math.PI / 180, p2 = lat2 * Math.PI / 180;
+  const dp = (lat2 - lat1) * Math.PI / 180;
+  const dl = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function recommendClusters_(wells) {
+  const depths = wells.map((x) => x.w[3]).slice().sort((a, b) => a - b);
+  const clusters = [];
+  let i = 0;
+  while (i < depths.length) {
+    let end = i;
+    while (end + 1 < depths.length && depths[end + 1] - depths[i] <= 50) end++;
+    const count = end - i + 1;
+    if (count >= 3) {
+      clusters.push({ min: depths[i], max: depths[end], count: count });
+      i = end + 1;
+    } else {
+      i++;
+    }
+  }
+  clusters.sort((a, b) => b.max - a.max);
+
+  if (clusters.length === 0) {
+    const deepest = depths[depths.length - 1];
+    return {
+      mode: 'deepest',
+      primary: { depth: deepest, count: 1, min: deepest, max: deepest },
+      alternatives: [],
+    };
+  }
+  const p = clusters[0];
+  return {
+    mode: 'cluster',
+    primary: { depth: p.max, count: p.count, min: p.min, max: p.max },
+    alternatives: clusters.slice(1).map((c) => ({
+      depth: c.max, count: c.count, min: c.min, max: c.max,
+    })),
+  };
+}
+
+function formatAnalysis_(analysis) {
+  const { rec, wells } = analysis;
+  const fmt = (n) => Math.round(n);
+  const lines = [];
+  if (rec.mode === 'cluster') {
+    lines.push(
+      `Recommended depth: ${fmt(rec.primary.depth)} ft  ` +
+      `(${rec.primary.count} wells in ${fmt(rec.primary.min)}–${fmt(rec.primary.max)} ft band)`
+    );
+    rec.alternatives.forEach((a, i) => {
+      const lbl = rec.alternatives.length > 1 ? `Alternative #${i + 1}` : 'Alternative';
+      lines.push(
+        `${lbl}: ${fmt(a.depth)} ft  ` +
+        `(${a.count} wells in ${fmt(a.min)}–${fmt(a.max)} ft band)`
+      );
+    });
+  } else {
+    lines.push(
+      `Recommended depth: ${fmt(rec.primary.depth)} ft  ` +
+      `(deepest of 10; no cluster of 3+ within 50 ft)`
+    );
+  }
+  const minD = Math.min.apply(Math, wells.map((x) => x.w[3]));
+  const maxD = Math.max.apply(Math, wells.map((x) => x.w[3]));
+  lines.push(`Range observed: ${fmt(minD)}–${fmt(maxD)} ft across ${wells.length} wells`);
+  return lines;
 }
 
 function shortAddr_(formatted) {
