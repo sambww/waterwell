@@ -38,6 +38,18 @@ const CONFIG = {
 
   /** Set to true to log what would happen without sending any notification. */
   DRY_RUN: false,
+
+  // ---- Customer-facing email (off until verified) -------------------------
+  /** Master switch: also email the customer using their parsed email. */
+  SEND_TO_CUSTOMER: false,
+
+  /** Even with SEND_TO_CUSTOMER on, log what would be sent and don't send.
+   *  Flip to false once you've watched a few real notifications and confirmed
+   *  the customer email + phone are being parsed correctly. */
+  CUSTOMER_DRY_RUN: true,
+
+  /** CC'd on every customer-facing email — keeps a copy in your inbox. */
+  CUSTOMER_CC: 'sam@texaswaterwell.com',
 };
 
 // ----------------------------------------------------------------------------
@@ -86,8 +98,13 @@ function handleThread_(thread, processed, needsReview) {
     return;
   }
 
+  const contact = extractCustomerContact_(body);
   const url = buildShareUrl_(geo.formatted, geo.lat, geo.lng);
-  const notif = buildNotification_(thread, extracted, geo, url);
+
+  // Customer email — gated by SEND_TO_CUSTOMER + CUSTOMER_DRY_RUN.
+  const customerStatus = maybeSendCustomerEmail_(extracted, contact, geo, url);
+
+  const notif = buildNotification_(extracted, contact, geo, url, customerStatus);
 
   if (CONFIG.DRY_RUN) {
     console.log(`[DRY RUN] Would email ${CONFIG.NOTIFY_EMAIL}:`);
@@ -100,7 +117,7 @@ function handleThread_(thread, processed, needsReview) {
   console.log(`Notified ${CONFIG.NOTIFY_EMAIL}: ${notif.subject}`);
 }
 
-function buildNotification_(thread, extracted, geo, url) {
+function buildNotification_(extracted, contact, geo, url, customerStatus) {
   const fullName = extracted.customerFullName || '(see original email)';
   const subjectName = extracted.customerFullName || 'New lead';
   const shortLocation = shortAddr_(geo.formatted);
@@ -118,10 +135,10 @@ function buildNotification_(thread, extracted, geo, url) {
     console.warn('Analysis build failed:', e);
   }
 
-  const lines = [
-    `Customer: ${fullName}`,
-    `Address:  ${geo.formatted}`,
-  ];
+  const lines = [`Customer: ${fullName}`];
+  if (contact.email) lines.push(`  Email:  ${contact.email}`);
+  if (contact.phone) lines.push(`  Phone:  ${contact.phone}`);
+  lines.push(`Address:  ${geo.formatted}`);
   if (confidenceNote) lines.push(confidenceNote);
   if (analysisLines.length) {
     lines.push('');
@@ -130,10 +147,125 @@ function buildNotification_(thread, extracted, geo, url) {
   lines.push('');
   lines.push('Full report:');
   lines.push(url);
+  if (customerStatus) {
+    lines.push('');
+    lines.push(`Customer email: ${customerStatus}`);
+  }
 
   return {
     subject: `Waterwell URL ready: ${subjectName} — ${shortLocation}`,
     body: lines.join('\n'),
+  };
+}
+
+// ----------------------------------------------------------------------------
+// Customer contact extraction
+// ----------------------------------------------------------------------------
+
+function extractCustomerContact_(body) {
+  let email = null;
+  let phone = null;
+
+  // Email — try labeled lines first
+  const labeledEmail = body.match(
+    /\b(?:client\s+email|customer\s+email|e[- ]?mail|email)\s*[:|]\s*([^\s<>"']+@[^\s<>"']+\.[A-Za-z]{2,})/i
+  );
+  if (labeledEmail) {
+    email = labeledEmail[1].trim().toLowerCase();
+  } else {
+    // Fall back to any email in the body that isn't a Workiz/internal address.
+    const anyEmail = body.match(/[\w.+-]+@[\w-]+\.[\w.-]+/g);
+    if (anyEmail) {
+      for (const candidate of anyEmail) {
+        const lower = candidate.toLowerCase();
+        if (!isInternalEmail_(lower)) { email = lower; break; }
+      }
+    }
+  }
+
+  // Phone — labeled first; fall back to anything that looks like a US phone.
+  const labeledPhone = body.match(
+    /\b(?:client\s+phone|customer\s+phone|phone|tel)\s*[:|]\s*([+\d()\-\s.]{7,30})/i
+  );
+  if (labeledPhone) {
+    phone = labeledPhone[1].replace(/\s+/g, ' ').trim();
+  } else {
+    const m = body.match(/\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}/);
+    if (m) phone = m[0].trim();
+  }
+  return { email: email, phone: phone };
+}
+
+function isInternalEmail_(addr) {
+  return (
+    /@(workiz|texaswaterwell|google|gmail|mailgun|mailchimp)\.com$/i.test(addr) ||
+    /@.*\.(workiz|mailgun)\.(com|net)$/i.test(addr) ||
+    /^bounce\+/i.test(addr) ||
+    /^notifications@/i.test(addr)
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Customer-facing email
+// ----------------------------------------------------------------------------
+
+/**
+ * Returns a status string suitable for the Sam notification, or '' if the
+ * feature is off entirely. Examples:
+ *   "Sent to jane@example.com (CC: sam@texaswaterwell.com)"
+ *   "[DRY RUN] Would send to jane@example.com"
+ *   "Skipped — no valid email found"
+ *   "Skipped — low-confidence address match"
+ */
+function maybeSendCustomerEmail_(extracted, contact, geo, url) {
+  if (!CONFIG.SEND_TO_CUSTOMER) return '';
+
+  if (!extracted.confident) {
+    return 'Skipped — low-confidence address match';
+  }
+  if (!contact.email || isInternalEmail_(contact.email)) {
+    return 'Skipped — no valid customer email parsed';
+  }
+  if (CONFIG.DRY_RUN) {
+    return '[GLOBAL DRY RUN] Would send to ' + contact.email;
+  }
+
+  const msg = buildCustomerEmail_(extracted, geo, url);
+
+  if (CONFIG.CUSTOMER_DRY_RUN) {
+    console.log(`[CUSTOMER DRY RUN] Would send to ${contact.email}`);
+    console.log(`  Subject: ${msg.subject}`);
+    console.log(msg.body);
+    return '[DRY RUN] Would send to ' + contact.email;
+  }
+
+  GmailApp.sendEmail(contact.email, msg.subject, msg.body, {
+    cc: CONFIG.CUSTOMER_CC,
+    name: 'Ballard Water Well Company',
+  });
+  return `Sent to ${contact.email} (CC: ${CONFIG.CUSTOMER_CC})`;
+}
+
+function buildCustomerEmail_(extracted, geo, url) {
+  const greeting = extracted.customerFirstName ? `Hi ${extracted.customerFirstName},` : 'Hi,';
+  return {
+    subject: `Your water well depth estimate for ${shortAddr_(geo.formatted)}`,
+    body: [
+      greeting,
+      '',
+      `Thanks for reaching out to Ballard Water Well Company about your project at ${geo.formatted}.`,
+      '',
+      "Based on the 10 nearest registered water wells in the Texas Water Development Board database, here's a preliminary look at what drilling depth makes sense for your property:",
+      '',
+      url,
+      '',
+      "The report shows the closest historical wells with their depths and our recommended target depth based on actual local drilling history. The final number for your site depends on a walk-through — call or reply to this email when you're ready and we'll get on the calendar.",
+      '',
+      'Sam Ballard',
+      'Ballard Water Well Company',
+      '(832) 479-3557  ·  info@texaswaterwell.com',
+      'texaswaterwell.com',
+    ].join('\n'),
   };
 }
 
@@ -500,9 +632,13 @@ function uninstallTrigger() {
  */
 function testParse() {
   // A real-shape Workiz auto-reply body (PII swapped for fake details).
+  // Includes the new client email + phone fields so you can see the parse.
   const SAMPLE_SUBJECT = 'Has Not Received Estimate';
   const SAMPLE_BODY = [
     'JANE DOE located at 1234 Triple Creek Loop, Livingston, Texas 77351 would like an estimate for a Residential Well Install',
+    '',
+    'Client Email: jane.doe@example.com',
+    'Client Phone: (555) 555-1234',
     '',
     'POLK',
     'Just Planning & Getting Quotes',
@@ -514,23 +650,31 @@ function testParse() {
   ].join('\n');
 
   const extracted = extractAddress_(SAMPLE_SUBJECT, SAMPLE_BODY);
-  console.log('Extracted:', JSON.stringify(extracted));
+  console.log('Address extracted:', JSON.stringify(extracted));
   if (!extracted) return;
+
+  const contact = extractCustomerContact_(SAMPLE_BODY);
+  console.log('Contact extracted:', JSON.stringify(contact));
 
   const geo = geocodeInTexas_(extracted.address);
   console.log('Geocoded:', JSON.stringify(geo));
   if (!geo) return;
 
   const url = buildShareUrl_(geo.formatted, geo.lat, geo.lng);
-  // testParse doesn't have a real thread, so fake a thread-like object for the
-  // notification preview.
-  const fakeThread = { getId: () => 'FAKE_THREAD_ID' };
-  const notif = buildNotification_(fakeThread, extracted, geo, url);
-  console.log('--- Notification email ---');
+  const customerStatus = maybeSendCustomerEmail_(extracted, contact, geo, url);
+  const notif = buildNotification_(extracted, contact, geo, url, customerStatus);
+  console.log('--- Sam notification ---');
   console.log(`To:      ${CONFIG.NOTIFY_EMAIL}`);
   console.log(`Subject: ${notif.subject}`);
   console.log('Body:');
   console.log(notif.body);
+
+  // Always show what the customer email would look like, regardless of flags.
+  console.log('--- Customer-facing email (preview, never sent from testParse) ---');
+  const customer = buildCustomerEmail_(extracted, geo, url);
+  console.log(`Subject: ${customer.subject}`);
+  console.log('Body:');
+  console.log(customer.body);
 }
 
 /**
