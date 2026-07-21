@@ -1,0 +1,36 @@
+name: Sync Workiz job queue
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-workiz
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pull latest schedule from Workiz
+        env:
+          WORKIZ_API_TOKEN: ${{ secrets.WORKIZ_API_TOKEN }}
+        run: python3 scripts/sync_workiz.py
+
+      - name: Commit if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/data/queue.json
+          if git diff --cached --quiet; then
+            echo "queue.json unchanged — nothing to commit"
+            exit 0
+          fi
+          git commit -m "sync: refresh job queue"
+          git push

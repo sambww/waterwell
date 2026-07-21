@@ -1,0 +1,26 @@
+{
+  "lastUpdated": "2026-05-25T18:00:00Z",
+  "source": "placeholder",
+  "rigs": {
+    "Bertha": [
+      { "position": 1, "etaWeek": "Week of May 25, 2026", "status": "drilling" },
+      { "position": 2, "etaWeek": "Week of Jun 1, 2026",  "status": "scheduled" },
+      { "position": 3, "etaWeek": "Week of Jun 8, 2026",  "status": "scheduled" }
+    ],
+    "Optimus": [
+      { "position": 1, "etaWeek": "Week of May 25, 2026", "status": "drilling" },
+      { "position": 2, "etaWeek": "Week of Jun 8, 2026",  "status": "scheduled" }
+    ],
+    "Poseidon": [
+      { "position": 1, "etaWeek": "Week of May 25, 2026", "status": "drilling" },
+      { "position": 2, "etaWeek": "Week of Jun 1, 2026",  "status": "scheduled" },
+      { "position": 3, "etaWeek": "Week of Jun 8, 2026",  "status": "scheduled" },
+      { "position": 4, "etaWeek": "Week of Jun 15, 2026", "status": "scheduled" }
+    ],
+    "Megatron": [
+      { "position": 1, "etaWeek": "Week of May 25, 2026", "status": "drilling" },
+      { "position": 2, "etaWeek": "Week of Jun 1, 2026",  "status": "scheduled" },
+      { "position": 3, "etaWeek": "Week of Jun 15, 2026", "status": "scheduled" }
+    ]
+  }
+}

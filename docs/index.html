@@ -33,8 +33,14 @@ a:hover { text-decoration:underline; }
 .brandbar .company { display:flex; flex-direction:column; }
 .brandbar .name { font-weight:700; font-size:17px; color:var(--navy); }
 .brandbar .tag { color:var(--muted); font-size:13px; }
+.brandbar .nav { margin-left:auto; display:flex; align-items:center; gap:20px; flex-wrap:wrap; }
+.brandbar .navlink {
+  color:var(--navy); font-weight:600; font-size:14px;
+  text-decoration:none; white-space:nowrap;
+}
+.brandbar .navlink:hover { color:var(--blue); text-decoration:none; }
 .brandbar .phone {
-  margin-left:auto; color:var(--navy); font-weight:700; font-size:17px;
+  color:var(--navy); font-weight:700; font-size:17px;
   text-decoration:none; white-space:nowrap;
 }
 .brandbar .phone:hover { color:var(--blue); text-decoration:none; }
@@ -192,7 +198,10 @@ footer.brand p { margin:0 0 4px; font-size:14px; color:#444; }
         <span class="name">Ballard Water Well Company</span>
         <span class="tag">Your local water well experts &middot; Since 1979</span>
       </div>
-      <a href="tel:8324793557" class="phone">(832) 479-3557</a>
+      <div class="nav">
+        <a href="queue.html" class="navlink">Job queue</a>
+        <a href="tel:8324793557" class="phone">(832) 479-3557</a>
+      </div>
     </div>
   </div>
 
